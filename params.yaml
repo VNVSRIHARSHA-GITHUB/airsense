@@ -1,0 +1,5 @@
+data:
+  cities: []            # chosen after EDA (10-15 cities)
+  pollutant: pm2.5
+forecast:
+  horizon_hours: 24
