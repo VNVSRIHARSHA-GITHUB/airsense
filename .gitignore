@@ -6,3 +6,4 @@ mlruns/
 mlflow.db
 *.log
 .ipynb_checkpoints/
+debug.md

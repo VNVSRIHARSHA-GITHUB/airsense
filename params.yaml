@@ -3,3 +3,6 @@ data:
   pollutant: pm2.5
 forecast:
   horizon_hours: 24
+sources:
+  datagov:
+    resource_id: "3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69"
