@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -78,7 +78,7 @@ def fetch_all_records(resource_id: str, api_key: str) -> list[dict]:
 
 def save_snapshot(records: list[dict], out_dir: Path = OUT_DIR) -> Path:
     """Save one snapshot as CSV, in a folder per day (UTC)."""
-    fetched_at = datetime.now(timezone.utc)
+    fetched_at = datetime.now(UTC)
     df = pd.DataFrame(records)
     df["fetched_at_utc"] = fetched_at.isoformat()
     day_dir = out_dir / fetched_at.strftime("%Y-%m-%d")
@@ -101,13 +101,20 @@ def main() -> int:
         params = yaml.safe_load(f)
     resource_id = params["sources"]["datagov"]["resource_id"]
 
+    min_records = params["sources"]["datagov"].get("min_records", 200)
     records = fetch_all_records(resource_id, api_key)
     if not records:
         log.error("Feed returned 0 records; nothing saved")
         return 1
 
     path = save_snapshot(records)
-    log.info("Saved %d records to %s", len(records), path)
+    if len(records) < min_records:
+        # Source-side delay (e.g. the midnight reading publishes late), not a
+        # pipeline failure: keep the data, warn, and let the next run catch up.
+        log.warning("Partial snapshot: %d records (expected >= %d) saved to %s",
+                    len(records), min_records, path)
+    else:
+        log.info("Saved %d records to %s", len(records), path)
     return 0
 
 

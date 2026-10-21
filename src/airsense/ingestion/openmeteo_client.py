@@ -9,7 +9,7 @@ column per weather variable.
 """
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -101,7 +101,7 @@ def fetch_weather(locations: dict[str, tuple[float, float]],
 
 def save_snapshot(df: pd.DataFrame, out_dir: Path = OUT_DIR) -> Path:
     """Save a forecast snapshot as CSV, in a folder per day (UTC)."""
-    fetched_at = datetime.now(timezone.utc)
+    fetched_at = datetime.now(UTC)
     df = df.assign(fetched_at_utc=fetched_at.isoformat())
     day_dir = out_dir / fetched_at.strftime("%Y-%m-%d")
     day_dir.mkdir(parents=True, exist_ok=True)

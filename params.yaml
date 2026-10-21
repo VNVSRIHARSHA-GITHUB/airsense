@@ -22,3 +22,4 @@ forecast:
 sources:
   datagov:
     resource_id: "3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69"
+    min_records: 200  
