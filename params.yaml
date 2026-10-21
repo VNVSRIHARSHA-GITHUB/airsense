@@ -28,3 +28,10 @@ validation:
     max_missing_frac: 0.5      # warn if more than 50% of a station's PM2.5 hours are empty
     cap_value: 1000            # instrument/dataset ceiling seen in EDA
     min_below_cap_frac: 0.999  # warn if more than 0.1% of readings sit at the cap
+processing:
+  spark_master: "local[*]"    # design choice A: local mode, all CPU cores
+  driver_memory: "6g"         # memory for Spark (leaves ~8 GB for everything else)
+  shuffle_partitions: 24      # parallel tasks when grouping (default 200 is too many for this data)
+  stuck_run_hours: 24         # >= this many identical consecutive hours = stuck sensor
+  avg_window_hours: 24        # CPCB 24-hour average (D21; re-check tomorrow)
+  min_valid_hours: 16         # CPCB minimum data rule for the 24-hour average
