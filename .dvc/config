@@ -1,2 +1,6 @@
 [cache]
     type = "hardlink,symlink"
+[core]
+    remote = localbackup
+['remote "localbackup"']
+    url = /home/sriharsha/dvc-remote/airsense
