@@ -62,3 +62,18 @@ stages:
     # The live-freshness check depends on the current time, not only on the
     # inputs, so this (3-second) stage must run on every `dvc repro`.
     always_changed: true
+
+  fetch_weather:
+    cmd: python src/airsense/ingestion/fetch_weather_history.py
+    deps:
+      - src/airsense/ingestion/fetch_weather_history.py
+      - src/airsense/ingestion/openmeteo_client.py
+    params:
+      - data.cities
+      - weather.archive.start_date
+      - weather.archive.end_date
+    outs:
+      - data/raw/weather/archive
+    metrics:
+      - data/interim/fetch_weather_metrics.json:
+          cache: false

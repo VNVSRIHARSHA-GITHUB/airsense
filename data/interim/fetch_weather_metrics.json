@@ -1,0 +1,133 @@
+{
+  "fetched_at_utc": "2026-10-21T18:20:33.389220+00:00",
+  "source": "https://archive-api.open-meteo.com/v1/archive",
+  "variables": [
+    "temperature_2m",
+    "relative_humidity_2m",
+    "precipitation",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    "surface_pressure",
+    "cloud_cover"
+  ],
+  "cities": 14,
+  "start_date": "2017-01-01",
+  "end_date": "2023-12-31",
+  "rows": 858816,
+  "download_seconds": 77.1,
+  "rows_per_second": 11143,
+  "years": {
+    "2017": {
+      "start_date": "2017-01-01",
+      "end_date": "2017-12-31",
+      "rows": 122640,
+      "expected_rows": 122640,
+      "missing_values": {
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "wind_speed_10m": 0,
+        "wind_direction_10m": 0,
+        "surface_pressure": 0,
+        "cloud_cover": 0
+      },
+      "seconds": 5.0
+    },
+    "2018": {
+      "start_date": "2018-01-01",
+      "end_date": "2018-12-31",
+      "rows": 122640,
+      "expected_rows": 122640,
+      "missing_values": {
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "wind_speed_10m": 0,
+        "wind_direction_10m": 0,
+        "surface_pressure": 0,
+        "cloud_cover": 0
+      },
+      "seconds": 5.0
+    },
+    "2019": {
+      "start_date": "2019-01-01",
+      "end_date": "2019-12-31",
+      "rows": 122640,
+      "expected_rows": 122640,
+      "missing_values": {
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "wind_speed_10m": 0,
+        "wind_direction_10m": 0,
+        "surface_pressure": 0,
+        "cloud_cover": 0
+      },
+      "seconds": 4.9
+    },
+    "2020": {
+      "start_date": "2020-01-01",
+      "end_date": "2020-12-31",
+      "rows": 122976,
+      "expected_rows": 122976,
+      "missing_values": {
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "wind_speed_10m": 0,
+        "wind_direction_10m": 0,
+        "surface_pressure": 0,
+        "cloud_cover": 0
+      },
+      "seconds": 6.4
+    },
+    "2021": {
+      "start_date": "2021-01-01",
+      "end_date": "2021-12-31",
+      "rows": 122640,
+      "expected_rows": 122640,
+      "missing_values": {
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "wind_speed_10m": 0,
+        "wind_direction_10m": 0,
+        "surface_pressure": 0,
+        "cloud_cover": 0
+      },
+      "seconds": 3.7
+    },
+    "2022": {
+      "start_date": "2022-01-01",
+      "end_date": "2022-12-31",
+      "rows": 122640,
+      "expected_rows": 122640,
+      "missing_values": {
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "wind_speed_10m": 0,
+        "wind_direction_10m": 0,
+        "surface_pressure": 0,
+        "cloud_cover": 0
+      },
+      "seconds": 46.7
+    },
+    "2023": {
+      "start_date": "2023-01-01",
+      "end_date": "2023-12-31",
+      "rows": 122640,
+      "expected_rows": 122640,
+      "missing_values": {
+        "temperature_2m": 0,
+        "relative_humidity_2m": 0,
+        "precipitation": 0,
+        "wind_speed_10m": 0,
+        "wind_direction_10m": 0,
+        "surface_pressure": 0,
+        "cloud_cover": 0
+      },
+      "seconds": 5.3
+    }
+  }
+}
