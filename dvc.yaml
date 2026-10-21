@@ -1,0 +1,64 @@
+# AirSense pipeline (Stage 2: data engineering).
+# `dvc repro` runs the stages in dependency order and re-runs only the stages whose
+# code, input data or parameters changed. `dvc dag` draws the graph.
+stages:
+  validate_raw:
+    cmd: python src/airsense/validation/validate_raw.py
+    deps:
+      - src/airsense/validation/validate_raw.py
+      - data/raw/cpcb
+    params:
+      - data.cities
+      - validation.raw
+    outs:
+      - data/interim/raw_validation.json
+
+  process_history:
+    cmd: python src/airsense/processing/process_history.py
+    deps:
+      - src/airsense/processing/process_history.py
+      - data/raw/cpcb
+      - data/interim/raw_validation.json
+    params:
+      - data.cities
+      - processing
+      - validation.raw.cap_value
+    outs:
+      - data/processed/station_hourly
+      - data/processed/city_hourly
+    metrics:
+      - data/interim/process_history_metrics.json:
+          cache: false
+
+  process_live:
+    cmd: python src/airsense/processing/process_live.py
+    deps:
+      - src/airsense/processing/process_live.py
+      - data/raw/live/datagov
+    params:
+      - data.cities
+      - live
+      - sources.datagov.min_records
+    outs:
+      - data/processed/live_station_hourly
+      - data/processed/live_city_hourly
+    metrics:
+      - data/interim/process_live_metrics.json:
+          cache: false
+
+  validate_processed:
+    cmd: python src/airsense/validation/validate_processed.py
+    deps:
+      - src/airsense/validation/validate_processed.py
+      - data/processed/city_hourly
+      - data/processed/live_city_hourly
+    params:
+      - data.cities
+      - validation.processed
+      - validation.raw.cap_value
+    outs:
+      - data/interim/processed_validation.json:
+          cache: false
+    # The live-freshness check depends on the current time, not only on the
+    # inputs, so this (3-second) stage must run on every `dvc repro`.
+    always_changed: true

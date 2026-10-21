@@ -1,0 +1,356 @@
+schema: '2.0'
+stages:
+  validate_raw:
+    cmd: python src/airsense/validation/validate_raw.py
+    deps:
+    - path: data/raw/cpcb
+      hash: md5
+      md5: 2407077bafdf6dd4cfc26a76c3bb1efc.dir
+      size: 1695419488
+      nfiles: 454
+    - path: src/airsense/validation/validate_raw.py
+      hash: md5
+      md5: 03221eee93315c31276b08e85ec6bede
+      size: 6555
+    params:
+      params.yaml:
+        data.cities:
+          Delhi:
+            lat: 28.638
+            lon: 77.1582
+            region: North
+          Lucknow:
+            lat: 26.8546
+            lon: 80.9491
+            region: North
+          Patna:
+            lat: 25.5983
+            lon: 85.0939
+            region: North
+          Kanpur:
+            lat: 26.4493
+            lon: 80.325
+            region: North
+          Jaipur:
+            lat: 26.8934
+            lon: 75.789
+            region: North
+          Chandigarh:
+            lat: 30.7435
+            lon: 76.7693
+            region: North
+          Mumbai:
+            lat: 19.0797
+            lon: 72.8643
+            region: West
+          Ahmedabad:
+            lat: 23.0333
+            lon: 72.5655
+            region: West
+          Pune:
+            lat: 18.5147
+            lon: 73.8634
+            region: West
+          Bengaluru:
+            lat: 12.9659
+            lon: 77.58
+            region: South
+          Chennai:
+            lat: 13.0765
+            lon: 80.2498
+            region: South
+          Hyderabad:
+            lat: 17.466
+            lon: 78.3891
+            region: South
+          Kolkata:
+            lat: 22.5607
+            lon: 88.3673
+            region: East
+          Guwahati:
+            lat: 26.1702
+            lon: 91.7037
+            region: East
+        validation.raw:
+          max_missing_frac: 0.5
+          cap_value: 1000
+          min_below_cap_frac: 0.999
+    outs:
+    - path: data/interim/raw_validation.json
+      hash: md5
+      md5: a22b63ac2f9cb1fcd93bae6edb53420b
+      size: 28072
+  process_history:
+    cmd: python src/airsense/processing/process_history.py
+    deps:
+    - path: data/interim/raw_validation.json
+      hash: md5
+      md5: a22b63ac2f9cb1fcd93bae6edb53420b
+      size: 28072
+    - path: data/raw/cpcb
+      hash: md5
+      md5: 2407077bafdf6dd4cfc26a76c3bb1efc.dir
+      size: 1695419488
+      nfiles: 454
+    - path: src/airsense/processing/process_history.py
+      hash: md5
+      md5: d9fda43320d7dad2889048e37c93c920
+      size: 10528
+    params:
+      params.yaml:
+        data.cities:
+          Delhi:
+            lat: 28.638
+            lon: 77.1582
+            region: North
+          Lucknow:
+            lat: 26.8546
+            lon: 80.9491
+            region: North
+          Patna:
+            lat: 25.5983
+            lon: 85.0939
+            region: North
+          Kanpur:
+            lat: 26.4493
+            lon: 80.325
+            region: North
+          Jaipur:
+            lat: 26.8934
+            lon: 75.789
+            region: North
+          Chandigarh:
+            lat: 30.7435
+            lon: 76.7693
+            region: North
+          Mumbai:
+            lat: 19.0797
+            lon: 72.8643
+            region: West
+          Ahmedabad:
+            lat: 23.0333
+            lon: 72.5655
+            region: West
+          Pune:
+            lat: 18.5147
+            lon: 73.8634
+            region: West
+          Bengaluru:
+            lat: 12.9659
+            lon: 77.58
+            region: South
+          Chennai:
+            lat: 13.0765
+            lon: 80.2498
+            region: South
+          Hyderabad:
+            lat: 17.466
+            lon: 78.3891
+            region: South
+          Kolkata:
+            lat: 22.5607
+            lon: 88.3673
+            region: East
+          Guwahati:
+            lat: 26.1702
+            lon: 91.7037
+            region: East
+        processing:
+          spark_master: local[*]
+          driver_memory: 6g
+          shuffle_partitions: 24
+          stuck_run_hours: 24
+          avg_window_hours: 24
+          min_valid_hours: 16
+        validation.raw.cap_value: 1000
+    outs:
+    - path: data/interim/process_history_metrics.json
+      hash: md5
+      md5: d1cd52211e9dee70b6195c5b5d21a7ca
+      size: 3375
+    - path: data/processed/city_hourly
+      hash: md5
+      md5: ce0c633524b045386f02ef56f2bfdf5d.dir
+      size: 20661418
+      nfiles: 534
+    - path: data/processed/station_hourly
+      hash: md5
+      md5: 0611f5160fd9a4a6a7d414746229a016.dir
+      size: 74140646
+      nfiles: 196
+  process_live:
+    cmd: python src/airsense/processing/process_live.py
+    deps:
+    - path: data/raw/live/datagov
+      hash: md5
+      md5: f72257db217d90ecc311a97fc83bff40.dir
+      size: 1033893
+      nfiles: 18
+    - path: src/airsense/processing/process_live.py
+      hash: md5
+      md5: 28eb892c1c7c088c414aff75108ab9db
+      size: 7473
+    params:
+      params.yaml:
+        data.cities:
+          Delhi:
+            lat: 28.638
+            lon: 77.1582
+            region: North
+          Lucknow:
+            lat: 26.8546
+            lon: 80.9491
+            region: North
+          Patna:
+            lat: 25.5983
+            lon: 85.0939
+            region: North
+          Kanpur:
+            lat: 26.4493
+            lon: 80.325
+            region: North
+          Jaipur:
+            lat: 26.8934
+            lon: 75.789
+            region: North
+          Chandigarh:
+            lat: 30.7435
+            lon: 76.7693
+            region: North
+          Mumbai:
+            lat: 19.0797
+            lon: 72.8643
+            region: West
+          Ahmedabad:
+            lat: 23.0333
+            lon: 72.5655
+            region: West
+          Pune:
+            lat: 18.5147
+            lon: 73.8634
+            region: West
+          Bengaluru:
+            lat: 12.9659
+            lon: 77.58
+            region: South
+          Chennai:
+            lat: 13.0765
+            lon: 80.2498
+            region: South
+          Hyderabad:
+            lat: 17.466
+            lon: 78.3891
+            region: South
+          Kolkata:
+            lat: 22.5607
+            lon: 88.3673
+            region: East
+          Guwahati:
+            lat: 26.1702
+            lon: 91.7037
+            region: East
+        live:
+          time_offset_hours: -1
+        sources.datagov.min_records: 200
+    outs:
+    - path: data/interim/process_live_metrics.json
+      hash: md5
+      md5: eb1b8f380e340fb5e0e208c1dc08e957
+      size: 2909
+    - path: data/processed/live_city_hourly
+      hash: md5
+      md5: 8b9294c8cb37a3db6b070bbfceb00319.dir
+      size: 62430
+      nfiles: 14
+    - path: data/processed/live_station_hourly
+      hash: md5
+      md5: 129ebc53356c51bcbce2a884c6ffa055.dir
+      size: 106579
+      nfiles: 14
+  validate_processed:
+    cmd: python src/airsense/validation/validate_processed.py
+    deps:
+    - path: data/processed/city_hourly
+      hash: md5
+      md5: ce0c633524b045386f02ef56f2bfdf5d.dir
+      size: 20661418
+      nfiles: 534
+    - path: data/processed/live_city_hourly
+      hash: md5
+      md5: 8b9294c8cb37a3db6b070bbfceb00319.dir
+      size: 62430
+      nfiles: 14
+    - path: src/airsense/validation/validate_processed.py
+      hash: md5
+      md5: 230385f329a5faae43e484e2829deb89
+      size: 10171
+    params:
+      params.yaml:
+        data.cities:
+          Delhi:
+            lat: 28.638
+            lon: 77.1582
+            region: North
+          Lucknow:
+            lat: 26.8546
+            lon: 80.9491
+            region: North
+          Patna:
+            lat: 25.5983
+            lon: 85.0939
+            region: North
+          Kanpur:
+            lat: 26.4493
+            lon: 80.325
+            region: North
+          Jaipur:
+            lat: 26.8934
+            lon: 75.789
+            region: North
+          Chandigarh:
+            lat: 30.7435
+            lon: 76.7693
+            region: North
+          Mumbai:
+            lat: 19.0797
+            lon: 72.8643
+            region: West
+          Ahmedabad:
+            lat: 23.0333
+            lon: 72.5655
+            region: West
+          Pune:
+            lat: 18.5147
+            lon: 73.8634
+            region: West
+          Bengaluru:
+            lat: 12.9659
+            lon: 77.58
+            region: South
+          Chennai:
+            lat: 13.0765
+            lon: 80.2498
+            region: South
+          Hyderabad:
+            lat: 17.466
+            lon: 78.3891
+            region: South
+          Kolkata:
+            lat: 22.5607
+            lon: 88.3673
+            region: East
+          Guwahati:
+            lat: 26.1702
+            lon: 91.7037
+            region: East
+        validation.processed:
+          coverage_since: '2020-01-01'
+          min_coverage_frac: 0.9
+          max_live_age_hours: 4
+          min_live_stations: 2
+        validation.raw.cap_value: 1000
+    outs:
+    - path: data/interim/processed_validation.json
+      hash: md5
+      md5: 34496f5dfec9eb098754ca2d135d22a5
+      size: 1251

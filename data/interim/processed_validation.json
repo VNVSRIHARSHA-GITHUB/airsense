@@ -1,0 +1,61 @@
+{
+  "validated_at_utc": "2026-10-21T14:54:15.182912+00:00",
+  "settings": {
+    "coverage_since": "2020-01-01",
+    "min_coverage_frac": 0.9,
+    "max_live_age_hours": 4,
+    "min_live_stations": 2,
+    "cap_value": 1000
+  },
+  "rows": {
+    "history": 1301754,
+    "live": 145
+  },
+  "seconds": 2.5,
+  "critical_passed": true,
+  "critical": {
+    "schema": [],
+    "history_rows": [],
+    "live_rows": []
+  },
+  "warnings": {
+    "history_coverage": [
+      {
+        "expectation": "expect_column_values_to_be_between",
+        "column": "coverage_frac",
+        "unexpected_percent": 7.143,
+        "examples": [
+          "0.8265162695902734"
+        ],
+        "observed": null
+      }
+    ],
+    "live_status": [
+      {
+        "expectation": "expect_column_values_to_be_between",
+        "column": "min_stations",
+        "unexpected_percent": 7.143,
+        "examples": [
+          "1"
+        ],
+        "observed": null
+      }
+    ]
+  },
+  "warning_details": {
+    "low_history_coverage": [
+      {
+        "city": "Pune",
+        "coverage_frac": 0.827
+      }
+    ],
+    "missing_live_cities": [],
+    "stale_live_cities": [],
+    "few_live_stations": [
+      {
+        "city": "Chandigarh",
+        "min_stations": 1
+      }
+    ]
+  }
+}
