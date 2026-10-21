@@ -35,3 +35,7 @@ processing:
   stuck_run_hours: 24         # >= this many identical consecutive hours = stuck sensor
   avg_window_hours: 24        # CPCB 24-hour average (D21; re-check tomorrow)
   min_valid_hours: 16         # CPCB minimum data rule for the 24-hour average
+live:
+  time_offset_hours: -1   # live last_update = END of the 24-h window; history labels
+                          # each hour by its START (Kaggle "From Date"), so subtract 1 h
+
