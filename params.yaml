@@ -23,3 +23,8 @@ sources:
   datagov:
     resource_id: "3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69"
     min_records: 200  
+validation:
+  raw:
+    max_missing_frac: 0.5      # warn if more than 50% of a station's PM2.5 hours are empty
+    cap_value: 1000            # instrument/dataset ceiling seen in EDA
+    min_below_cap_frac: 0.999  # warn if more than 0.1% of readings sit at the cap
