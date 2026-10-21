@@ -77,3 +77,16 @@ stages:
     metrics:
       - data/interim/fetch_weather_metrics.json:
           cache: false
+
+  validate_weather:
+    cmd: python src/airsense/validation/validate_weather.py
+    deps:
+      - src/airsense/validation/validate_weather.py
+      - src/airsense/ingestion/openmeteo_client.py
+      - data/raw/weather/archive
+    params:
+      - data.cities
+      - weather
+    outs:
+      - data/interim/weather_validation.json:
+          cache: false

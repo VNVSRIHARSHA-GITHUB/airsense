@@ -1,0 +1,78 @@
+{
+  "validated_at_utc": "2026-10-21T18:35:59.784608+00:00",
+  "settings": {
+    "max_missing_frac": 0.001,
+    "plausible": {
+      "temperature_2m": [
+        -10,
+        50
+      ],
+      "surface_pressure": [
+        850,
+        1050
+      ],
+      "wind_speed_10m": [
+        0,
+        100
+      ],
+      "precipitation": [
+        0,
+        100
+      ]
+    },
+    "start_date": "2017-01-01",
+    "end_date": "2023-12-31",
+    "pause_s": 65
+  },
+  "files": [
+    "2017.parquet",
+    "2018.parquet",
+    "2019.parquet",
+    "2020.parquet",
+    "2021.parquet",
+    "2022.parquet",
+    "2023.parquet"
+  ],
+  "rows": 858816,
+  "seconds": 2.8,
+  "rows_per_second": 307662,
+  "critical_passed": true,
+  "critical": {
+    "rows": [],
+    "completeness": []
+  },
+  "warnings": {
+    "rows": []
+  },
+  "incomplete_cities": [],
+  "observed_ranges": {
+    "temperature_2m": {
+      "min": 1.7,
+      "max": 45.8
+    },
+    "relative_humidity_2m": {
+      "min": 3.0,
+      "max": 100.0
+    },
+    "precipitation": {
+      "min": 0.0,
+      "max": 71.6
+    },
+    "wind_speed_10m": {
+      "min": 0.0,
+      "max": 75.3
+    },
+    "wind_direction_10m": {
+      "min": 1.0,
+      "max": 360.0
+    },
+    "surface_pressure": {
+      "min": 902.3,
+      "max": 1021.4
+    },
+    "cloud_cover": {
+      "min": 0.0,
+      "max": 100.0
+    }
+  }
+}

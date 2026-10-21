@@ -436,3 +436,103 @@ stages:
       md5: 69354aaaf55617c50c06ba5ad2bf93e2.dir
       size: 7329101
       nfiles: 7
+  validate_weather:
+    cmd: python src/airsense/validation/validate_weather.py
+    deps:
+    - path: data/raw/weather/archive
+      hash: md5
+      md5: 69354aaaf55617c50c06ba5ad2bf93e2.dir
+      size: 7329101
+      nfiles: 7
+    - path: src/airsense/ingestion/openmeteo_client.py
+      hash: md5
+      md5: c9385ada0497fc3f7d11fb3d37bb52b8
+      size: 4298
+    - path: src/airsense/validation/validate_weather.py
+      hash: md5
+      md5: c2131f3ad4b83fb9e1eae9ead81bf840
+      size: 8273
+    params:
+      params.yaml:
+        data.cities:
+          Delhi:
+            lat: 28.638
+            lon: 77.1582
+            region: North
+          Lucknow:
+            lat: 26.8546
+            lon: 80.9491
+            region: North
+          Patna:
+            lat: 25.5983
+            lon: 85.0939
+            region: North
+          Kanpur:
+            lat: 26.4493
+            lon: 80.325
+            region: North
+          Jaipur:
+            lat: 26.8934
+            lon: 75.789
+            region: North
+          Chandigarh:
+            lat: 30.7435
+            lon: 76.7693
+            region: North
+          Mumbai:
+            lat: 19.0797
+            lon: 72.8643
+            region: West
+          Ahmedabad:
+            lat: 23.0333
+            lon: 72.5655
+            region: West
+          Pune:
+            lat: 18.5147
+            lon: 73.8634
+            region: West
+          Bengaluru:
+            lat: 12.9659
+            lon: 77.58
+            region: South
+          Chennai:
+            lat: 13.0765
+            lon: 80.2498
+            region: South
+          Hyderabad:
+            lat: 17.466
+            lon: 78.3891
+            region: South
+          Kolkata:
+            lat: 22.5607
+            lon: 88.3673
+            region: East
+          Guwahati:
+            lat: 26.1702
+            lon: 91.7037
+            region: East
+        weather:
+          archive:
+            start_date: '2017-01-01'
+            end_date: '2023-12-31'
+            pause_s: 65
+          validation:
+            max_missing_frac: 0.001
+            plausible:
+              temperature_2m:
+              - -10
+              - 50
+              surface_pressure:
+              - 850
+              - 1050
+              wind_speed_10m:
+              - 0
+              - 100
+              precipitation:
+              - 0
+              - 100
+    outs:
+    - path: data/interim/weather_validation.json
+      hash: md5
+      md5: 737a7c20b1192a43a260af1afb273736
+      size: 1337

@@ -55,3 +55,10 @@ weather:
     end_date: "2023-12-31"     # end of the CPCB history's last year
     pause_s: 65                # seconds between yearly requests: a year of 14 cities counts
                                # as hundreds of API calls (free tier: 600 per minute)
+  validation:                  # warning thresholds (validate_weather.py); physical limits are in the code
+    max_missing_frac: 0.001    # warn if more than 0.1% of a variable's hours are empty (archive: expect 0)
+    plausible:                 # warn on values outside these ranges for Indian cities [min, max]
+      temperature_2m: [-10, 50]      # deg C
+      surface_pressure: [850, 1050]  # hPa (Bengaluru, ~920 m altitude, sits near 910)
+      wind_speed_10m: [0, 100]       # km/h (cyclones can exceed this on the coast)
+      precipitation: [0, 100]        # mm in one hour
