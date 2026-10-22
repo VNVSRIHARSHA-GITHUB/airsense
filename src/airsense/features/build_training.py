@@ -125,6 +125,9 @@ def main() -> int:
         )
         .to_df()
         .rename(columns={"event_timestamp": "time_utc"})
+        # DuckDB returns rows in no fixed order; sorting makes identical inputs give
+        # byte-identical files, so DVC stores one copy and later stages skip (D43).
+        .sort_values(["city", "time_utc"], ignore_index=True)
     )
     join_s = time.perf_counter() - start
 

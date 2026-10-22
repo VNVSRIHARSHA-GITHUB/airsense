@@ -6,10 +6,13 @@
    measure the read latency;
 3. check freshness: Feast does not apply ttl to online reads, so the age of each
    city's newest live hour is computed here and compared with
-   validation.processed.max_live_age_hours.
+   validation.processed.max_live_age_hours;
+4. check training/serving consistency: the same newest features are read through
+   the OFFLINE path (DuckDB point-in-time join, as training does) and must equal
+   the ONLINE values (SQLite, as serving does), city by city.
 
-A missing or stale city is a WARNING (the live feed can lag); an online store with
-no city at all is an error (exit code 1).
+A missing or stale city is a WARNING (the live feed can lag). An online store with
+no city at all, or any offline/online difference (skew), is an ERROR (exit code 1).
 
 Output: data/interim/feast_online_metrics.json
 """
@@ -23,6 +26,7 @@ import warnings
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import yaml
 from feast import FeatureStore
@@ -33,6 +37,31 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 REPO = PROJECT_ROOT / "feature_repo"
 PM_LIVE = PROJECT_ROOT / "data" / "features" / "pm_live"
 METRICS_FILE = PROJECT_ROOT / "data" / "interim" / "feast_online_metrics.json"
+
+
+def compare_online_offline(
+    online: pd.DataFrame, offline: pd.DataFrame, columns: list[str]
+) -> list[dict]:
+    """Feature values that differ between the online and offline paths, per city.
+
+    Both missing counts as equal; numbers are compared with a tiny tolerance.
+    """
+    merged = online.merge(offline, on="city", suffixes=("_online", "_offline"))
+    problems = []
+    for _, row in merged.iterrows():
+        for c in columns:
+            a, b = row[f"{c}_online"], row[f"{c}_offline"]
+            if pd.isna(a) and pd.isna(b):
+                continue
+            if pd.isna(a) or pd.isna(b) or not np.isclose(a, b, rtol=1e-9, atol=1e-9):
+                problems.append(
+                    {"city": row["city"], "feature": c, "online": a, "offline": b}
+                )
+    missing = sorted(set(online["city"]) ^ set(offline["city"]))
+    problems += [
+        {"city": c, "feature": "*", "online": None, "offline": None} for c in missing
+    ]
+    return problems
 
 
 def newest_hours(pm_live: pd.DataFrame, now: pd.Timestamp) -> pd.Series:
@@ -76,7 +105,25 @@ def main() -> int:
 
     present = sorted(online.loc[online["pm25_24h"].notna(), "city"])
     now = pd.Timestamp(end)
-    newest = newest_hours(pd.read_parquet(PM_LIVE), now)
+    pm_live = pd.read_parquet(PM_LIVE)
+    newest = newest_hours(pm_live, now)
+
+    # Consistency: the online value of each city must equal the offline value of
+    # the same row (its newest live row at or before now) read point-in-time.
+    rows_now = pm_live[pm_live["time_utc"] <= now]
+    latest = rows_now.groupby("city", observed=True)["time_utc"].max().reset_index()
+    entity = latest.assign(city=latest["city"].astype(str)).rename(
+        columns={"time_utc": "event_timestamp"}
+    )
+    offline = store.get_historical_features(
+        entity_df=entity, features=service, full_feature_names=False
+    ).to_df()
+    columns = [c for c in online.columns if c != "city"]
+    skew = compare_online_offline(
+        online[online["city"].isin(entity["city"])],
+        offline[["city", *columns]],
+        columns,
+    )
     age_h = ((now - newest).dt.total_seconds() / 3600).round(1)
     stale = {c: float(a) for c, a in age_h.items() if a > max_age}
     missing = sorted(set(cities) - set(present))
@@ -95,6 +142,8 @@ def main() -> int:
                 "max_live_age_hours": max_age,
                 "live_age_hours": {c: float(a) for c, a in age_h.items()},
                 "stale_cities": stale,
+                "online_offline_checked_cities": len(entity),
+                "online_offline_differences": skew,
             },
             indent=2,
         )
@@ -113,6 +162,10 @@ def main() -> int:
     if not present:
         log.error("The online store holds no features at all")
         return 1
+    if skew:
+        log.error("Training/serving skew: online != offline for %s", skew[:5])
+        return 1
+    log.info("Online and offline features identical for %d cities", len(entity))
     return 0
 
 

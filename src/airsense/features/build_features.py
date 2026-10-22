@@ -76,6 +76,17 @@ def complete_hourly_grid(df: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
+def min_history_hours(cfg: dict) -> int:
+    """Hours of past data the newest PM2.5 features need (longest look-back, D37).
+
+    Serving only has recent live data; with at least this many hours before t,
+    the features at t are identical to those computed on the full history.
+    """
+    return max(
+        max(cfg["lags_hours"]), max(cfg["change_hours"]), cfg["rolling_hours"] - 1
+    )
+
+
 def pm_features(pm: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     """Lag, change and rolling features from the 24-hour average PM2.5.
 
@@ -170,10 +181,20 @@ def for_storage(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def write_parquet(df: pd.DataFrame, out_dir: Path) -> None:
-    """Replace out_dir with df, partitioned by city (full rebuild, never append)."""
+    """Replace out_dir with df, partitioned by city (full rebuild, never append).
+
+    Fixed file names (part-0.parquet) instead of pyarrow's random ones: identical
+    data then gives an identical folder, so DVC sees "unchanged" and does not
+    re-run the stages after it (D43).
+    """
     if out_dir.exists():
         shutil.rmtree(out_dir)
-    df.to_parquet(out_dir, partition_cols=["city"], index=False)
+    df.to_parquet(
+        out_dir,
+        partition_cols=["city"],
+        index=False,
+        basename_template="part-{i}.parquet",
+    )
 
 
 def missing_fractions(df: pd.DataFrame) -> dict:

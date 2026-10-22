@@ -1,7 +1,7 @@
 {
-  "built_at_utc": "2026-10-22T10:47:59.208301+00:00",
+  "built_at_utc": "2026-10-22T12:38:44.340388+00:00",
   "source": "history",
-  "seconds": 2.0,
+  "seconds": 1.5,
   "tables": {
     "pm_history": {
       "rows": 1301754,

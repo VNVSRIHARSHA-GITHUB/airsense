@@ -7,6 +7,8 @@ from airsense.features.build_features import (
     calendar_features,
     complete_hourly_grid,
     for_storage,
+    min_history_hours,
+    write_parquet,
     pm_features,
     weather_features,
 )
@@ -151,3 +153,37 @@ def test_storage_format_keeps_the_instant_and_labels_it_utc():
     assert str(out["time_utc"].dtype) == "datetime64[us, UTC]"
     assert out["time_utc"].iloc[0] == pd.Timestamp("2023-01-01 00:30", tz="UTC")
     assert out["city"].dtype == object
+
+
+def test_recent_window_gives_the_same_features_as_the_full_history():
+    """Training/serving consistency: serving computes features from recent live
+    data only; with min_history_hours of past data the newest rows must be
+    identical to those computed on years of history."""
+    cfg = {**CFG, "lags_hours": [1, 24, 72], "change_hours": [24], "rolling_hours": 72}
+    rng = np.random.default_rng(0)
+    full = pm_table(rng.uniform(10, 300, 500))
+    need = min_history_hours(cfg)
+    assert need == 72
+    recent = full.tail(need + 20)  # 20 newest hours, each with 72 h of history
+    a = pm_features(full, cfg).tail(20).reset_index(drop=True)
+    b = pm_features(recent, cfg).tail(20).reset_index(drop=True)
+    pd.testing.assert_frame_equal(a, b)
+
+
+def test_rewriting_identical_data_gives_identical_files(tmp_path):
+    """Fixed file names + identical bytes: DVC sees an unchanged folder (D43)."""
+    import hashlib
+
+    df = pd.concat([pm_table([1, 2], "Delhi"), pm_table([3, 4], "Pune")])
+
+    def snapshot():
+        write_parquet(df, tmp_path / "t")
+        files = sorted((tmp_path / "t").rglob("*.parquet"))
+        return {
+            f.relative_to(tmp_path).as_posix(): hashlib.md5(f.read_bytes()).hexdigest()
+            for f in files
+        }
+
+    first, second = snapshot(), snapshot()
+    assert first == second
+    assert "t/city=Delhi/part-0.parquet" in first

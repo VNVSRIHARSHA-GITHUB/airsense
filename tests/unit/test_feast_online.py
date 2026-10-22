@@ -1,7 +1,7 @@
 """Unit tests for the online-store freshness helper (Stage 3.5)."""
 
 import pandas as pd
-from airsense.features.feast_online import newest_hours
+from airsense.features.feast_online import compare_online_offline, newest_hours
 
 NOW = pd.Timestamp("2026-10-22 10:00", tz="UTC")
 
@@ -33,3 +33,25 @@ def test_city_without_values_is_absent():
         ]
     )
     assert list(newest_hours(df, NOW).index) == ["Delhi"]
+
+
+def test_identical_online_and_offline_values_pass():
+    online = pd.DataFrame(
+        {"city": ["Delhi"], "pm25_24h": [100.0], "lag": [float("nan")]}
+    )
+    assert compare_online_offline(online, online.copy(), ["pm25_24h", "lag"]) == []
+
+
+def test_a_differing_value_is_reported():
+    online = pd.DataFrame({"city": ["Delhi"], "pm25_24h": [100.0]})
+    offline = pd.DataFrame({"city": ["Delhi"], "pm25_24h": [101.0]})
+    problems = compare_online_offline(online, offline, ["pm25_24h"])
+    assert problems == [
+        {"city": "Delhi", "feature": "pm25_24h", "online": 100.0, "offline": 101.0}
+    ]
+
+
+def test_value_missing_on_one_side_only_is_reported():
+    online = pd.DataFrame({"city": ["Delhi"], "pm25_24h": [float("nan")]})
+    offline = pd.DataFrame({"city": ["Delhi"], "pm25_24h": [100.0]})
+    assert len(compare_online_offline(online, offline, ["pm25_24h"])) == 1

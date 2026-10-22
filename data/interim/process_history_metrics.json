@@ -1,5 +1,5 @@
 {
-  "processed_at_utc": "2026-10-21T14:53:14.714110+00:00",
+  "processed_at_utc": "2026-10-22T12:31:29.320994+00:00",
   "settings": {
     "spark_master": "local[*]",
     "driver_memory": "6g",
@@ -15,8 +15,8 @@
   "stuck_readings_removed": 10186,
   "capped_readings_flagged": 280,
   "station_hours_with_24h_avg": 4565059,
-  "seconds_total": 72.4,
-  "rows_per_second": 93195,
+  "seconds_total": 68.6,
+  "rows_per_second": 98372,
   "cities": {
     "Lucknow": {
       "first_utc": "2009-12-31T18:30:00Z",
