@@ -84,7 +84,7 @@ train:                           # Stage 4 (D44-D46)
     val_end: "2022-10-01"        # ... with targets before this
     test_start: "2022-10-02"     # test: Oct 2022 - Mar 2023 (winter, Diwali 2022)
   lgbm:                          # LightGBM settings (tried in DVC experiments, logged in MLflow)
-    objective: regression        # L2 loss on the 24-h average PM2.5
+    objective: regression_l1     # L1 loss = mean absolute error, our main metric (D48)
     learning_rate: 0.05
     num_leaves: 63
     min_data_in_leaf: 200
@@ -101,6 +101,6 @@ train:                           # Stage 4 (D44-D46)
   num_boost_round: 2000          # upper limit; early stopping picks the real number
   early_stopping_rounds: 50      # stop when validation error has not improved for 50 trees
   train_fraction: 1.0            # share of training rows used (lower it, e.g. 0.5, if memory is tight)
-  target_mode: level             # "level" = predict PM2.5; "change" = predict the change from now (D48)
+  target_mode: change            # "level" = predict PM2.5; "change" = predict the change from now (D48)
   shap_sample: 5000              # test rows explained with SHAP
   mlflow_experiment: airsense-pm25
