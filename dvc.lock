@@ -786,3 +786,115 @@ stages:
       md5: 2d05b91c1ce54186477f336f82b364d6.dir
       size: 1230243498
       nfiles: 24
+  train:
+    cmd: python src/airsense/training/train.py
+    deps:
+    - path: data/training
+      hash: md5
+      md5: 2d05b91c1ce54186477f336f82b364d6.dir
+      size: 1230243498
+      nfiles: 24
+    - path: src/airsense/training/train.py
+      hash: md5
+      md5: 34929b64de4abf0135e2b55fd38dc017
+      size: 19020
+    params:
+      params.yaml:
+        data.cities:
+          Delhi:
+            lat: 28.638
+            lon: 77.1582
+            region: North
+          Lucknow:
+            lat: 26.8546
+            lon: 80.9491
+            region: North
+          Patna:
+            lat: 25.5983
+            lon: 85.0939
+            region: North
+          Kanpur:
+            lat: 26.4493
+            lon: 80.325
+            region: North
+          Jaipur:
+            lat: 26.8934
+            lon: 75.789
+            region: North
+          Chandigarh:
+            lat: 30.7435
+            lon: 76.7693
+            region: North
+          Mumbai:
+            lat: 19.0797
+            lon: 72.8643
+            region: West
+          Ahmedabad:
+            lat: 23.0333
+            lon: 72.5655
+            region: West
+          Pune:
+            lat: 18.5147
+            lon: 73.8634
+            region: West
+          Bengaluru:
+            lat: 12.9659
+            lon: 77.58
+            region: South
+          Chennai:
+            lat: 13.0765
+            lon: 80.2498
+            region: South
+          Hyderabad:
+            lat: 17.466
+            lon: 78.3891
+            region: South
+          Kolkata:
+            lat: 22.5607
+            lon: 88.3673
+            region: East
+          Guwahati:
+            lat: 26.1702
+            lon: 91.7037
+            region: East
+        train:
+          split:
+            train_end: '2022-01-01'
+            val_start: '2022-01-02'
+            val_end: '2022-10-01'
+            test_start: '2022-10-02'
+          lgbm:
+            objective: regression
+            learning_rate: 0.05
+            num_leaves: 63
+            min_data_in_leaf: 200
+            feature_fraction: 0.8
+            bagging_fraction: 0.8
+            bagging_freq: 1
+            lambda_l2: 1.0
+            max_bin: 255
+            num_threads: 0
+            deterministic: true
+            force_row_wise: true
+            seed: 42
+            verbose: -1
+          num_boost_round: 2000
+          early_stopping_rounds: 50
+          train_fraction: 1.0
+          target_mode: level
+          shap_sample: 5000
+          mlflow_experiment: airsense-pm25
+    outs:
+    - path: data/interim/train_metrics.json
+      hash: md5
+      md5: 903e18ef08f5da734e25fbd18a1e094c
+      size: 7954
+    - path: models/lgbm_model.txt
+      hash: md5
+      md5: 6977d83046ee4901a54e9e0aa993090f
+      size: 1231198
+    - path: reports/train
+      hash: md5
+      md5: 819b73a05e3622486a164aea48647203.dir
+      size: 204434
+      nfiles: 3

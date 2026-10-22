@@ -176,3 +176,18 @@ stages:
     metrics:
       - data/interim/training_metrics.json:
           cache: false
+
+  train:
+    cmd: python src/airsense/training/train.py
+    deps:
+      - src/airsense/training/train.py
+      - data/training
+    params:
+      - data.cities
+      - train
+    outs:
+      - models/lgbm_model.txt
+      - reports/train
+    metrics:
+      - data/interim/train_metrics.json:
+          cache: false

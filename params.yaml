@@ -76,3 +76,31 @@ features:                        # Stage 3 feature engineering (D37, D38)
   diwali_dates: ["2017-10-19", "2018-11-07", "2019-10-27", "2020-11-14", "2021-11-04",
                  "2022-10-24", "2023-11-12", "2024-10-31", "2025-10-20", "2026-11-08"]
   materialize_days: 7           # online store: load live features of the last 7 days (newest per city wins)
+
+train:                           # Stage 4 (D44-D46)
+  split:                         # by time; the day between an end and the next start is left out
+    train_end: "2022-01-01"      # train: targets before this
+    val_start: "2022-01-02"      # validation: forecasts from here ...
+    val_end: "2022-10-01"        # ... with targets before this
+    test_start: "2022-10-02"     # test: Oct 2022 - Mar 2023 (winter, Diwali 2022)
+  lgbm:                          # LightGBM settings (tried in DVC experiments, logged in MLflow)
+    objective: regression        # L2 loss on the 24-h average PM2.5
+    learning_rate: 0.05
+    num_leaves: 63
+    min_data_in_leaf: 200
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 1
+    lambda_l2: 1.0
+    max_bin: 255
+    num_threads: 0               # 0 = all CPU cores
+    deterministic: true          # same data + settings -> same model
+    force_row_wise: true
+    seed: 42
+    verbose: -1
+  num_boost_round: 2000          # upper limit; early stopping picks the real number
+  early_stopping_rounds: 50      # stop when validation error has not improved for 50 trees
+  train_fraction: 1.0            # share of training rows used (lower it, e.g. 0.5, if memory is tight)
+  target_mode: level             # "level" = predict PM2.5; "change" = predict the change from now (D48)
+  shap_sample: 5000              # test rows explained with SHAP
+  mlflow_experiment: airsense-pm25
