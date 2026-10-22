@@ -672,3 +672,117 @@ stages:
       hash: md5
       md5: d5a64287fbfcd81222d3aa27d3bf9546
       size: 588
+  build_training:
+    cmd: feast -c feature_repo apply && python 
+      src/airsense/features/build_training.py
+    deps:
+    - path: data/features/pm_history
+      hash: md5
+      md5: f1d0a4305d8dc3f99fe9b862d160a593.dir
+      size: 100277529
+      nfiles: 14
+    - path: data/features/weather_history
+      hash: md5
+      md5: c044f0cdf9727ef202f76b05d35fccb2.dir
+      size: 14972879
+      nfiles: 14
+    - path: feature_repo/feature_store.yaml
+      hash: md5
+      md5: 8ac82a8d0758d429ceaa300398c8f3cd
+      size: 529
+    - path: feature_repo/features.py
+      hash: md5
+      md5: 4d5848fcf7ab1b47498d05755d8596de
+      size: 4184
+    - path: src/airsense/features/build_features.py
+      hash: md5
+      md5: 36cd6283f348c8ef16c3b5bc9009c912
+      size: 9416
+    - path: src/airsense/features/build_training.py
+      hash: md5
+      md5: 29dd1c528699f7d73a5d2e8a0727bc6e
+      size: 6603
+    params:
+      params.yaml:
+        data.cities:
+          Delhi:
+            lat: 28.638
+            lon: 77.1582
+            region: North
+          Lucknow:
+            lat: 26.8546
+            lon: 80.9491
+            region: North
+          Patna:
+            lat: 25.5983
+            lon: 85.0939
+            region: North
+          Kanpur:
+            lat: 26.4493
+            lon: 80.325
+            region: North
+          Jaipur:
+            lat: 26.8934
+            lon: 75.789
+            region: North
+          Chandigarh:
+            lat: 30.7435
+            lon: 76.7693
+            region: North
+          Mumbai:
+            lat: 19.0797
+            lon: 72.8643
+            region: West
+          Ahmedabad:
+            lat: 23.0333
+            lon: 72.5655
+            region: West
+          Pune:
+            lat: 18.5147
+            lon: 73.8634
+            region: West
+          Bengaluru:
+            lat: 12.9659
+            lon: 77.58
+            region: South
+          Chennai:
+            lat: 13.0765
+            lon: 80.2498
+            region: South
+          Hyderabad:
+            lat: 17.466
+            lon: 78.3891
+            region: South
+          Kolkata:
+            lat: 22.5607
+            lon: 88.3673
+            region: East
+          Guwahati:
+            lat: 26.1702
+            lon: 91.7037
+            region: East
+        features.diwali_dates:
+        - '2017-10-19'
+        - '2018-11-07'
+        - '2019-10-27'
+        - '2020-11-14'
+        - '2021-11-04'
+        - '2022-10-24'
+        - '2023-11-12'
+        - '2024-10-31'
+        - '2025-10-20'
+        - '2026-11-08'
+        features.festival_window_days: 2
+        features.local_timezone: Asia/Kolkata
+        features.train_start: '2018-01-01'
+        forecast.horizon_hours: 24
+    outs:
+    - path: data/interim/training_metrics.json
+      hash: md5
+      md5: 1f2a69c3b36ec5733aa6587b5e5f2baf
+      size: 1801
+    - path: data/training
+      hash: md5
+      md5: 5395eb819d3fef3bea20dfe5a5eb6617.dir
+      size: 1232333641
+      nfiles: 24

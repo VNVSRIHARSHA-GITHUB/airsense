@@ -152,3 +152,27 @@ stages:
           cache: false
     # Freshness depends on the current time, so this stage runs on every repro.
     always_changed: true
+
+  build_training:
+    # `feast apply` first, so the registry exists even on a fresh clone; then the
+    # point-in-time join and the horizon expansion.
+    cmd: feast -c feature_repo apply && python src/airsense/features/build_training.py
+    deps:
+      - src/airsense/features/build_training.py
+      - src/airsense/features/build_features.py
+      - feature_repo/features.py
+      - feature_repo/feature_store.yaml
+      - data/features/pm_history
+      - data/features/weather_history
+    params:
+      - data.cities
+      - forecast.horizon_hours
+      - features.train_start
+      - features.local_timezone
+      - features.festival_window_days
+      - features.diwali_dates
+    outs:
+      - data/training
+    metrics:
+      - data/interim/training_metrics.json:
+          cache: false
