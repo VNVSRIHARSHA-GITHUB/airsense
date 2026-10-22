@@ -18,6 +18,9 @@ is stored as 10:30 UTC); weather comes at whole UTC hours. Each PM2.5 hour is ma
 with the weather at its middle: the 10:30 row gets the 11:00 weather. The weather
 table is therefore relabelled by -30 minutes, so both tables join on time_utc.
 
+Stored tables carry UTC-labelled timestamps (for_storage, D41), unlike the naive-UTC
+tables of Stage 2, because Feast's DuckDB offline store needs them.
+
 Usage (one DVC stage each):
   python build_features.py history  -> data/features/pm_history/, weather_history/
   python build_features.py live     -> data/features/pm_live/
@@ -150,6 +153,22 @@ def calendar_features(times_utc: pd.Series, cfg: dict) -> pd.DataFrame:
     return out
 
 
+def for_storage(df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare a feature table for the Feast offline store (D41).
+
+    Times get an explicit UTC label, in microseconds. Feast's DuckDB offline store
+    reads a naive timestamp as LOCAL time of the computer (IST on the laptop, a
+    5:30 shift), and cannot convert nanosecond UTC timestamps when materializing.
+    The values are the same instants as before; only the label and unit change.
+    """
+    out = df.copy()
+    out["city"] = out["city"].astype(str)
+    out["time_utc"] = (
+        out["time_utc"].dt.tz_localize("UTC").astype("datetime64[us, UTC]")
+    )
+    return out
+
+
 def write_parquet(df: pd.DataFrame, out_dir: Path) -> None:
     """Replace out_dir with df, partitioned by city (full rebuild, never append)."""
     if out_dir.exists():
@@ -191,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         tables = {"pm_live": pm_features(pm, cfg)}
 
     for name, df in tables.items():
-        write_parquet(df, FEATURES / name)
+        write_parquet(for_storage(df), FEATURES / name)
     elapsed = time.perf_counter() - start
 
     metrics = {

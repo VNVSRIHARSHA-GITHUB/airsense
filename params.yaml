@@ -75,3 +75,4 @@ features:                        # Stage 3 feature engineering (D37, D38)
   festival_window_days: 2        # Diwali flag = Diwali date +/- 2 days (local dates)
   diwali_dates: ["2017-10-19", "2018-11-07", "2019-10-27", "2020-11-14", "2021-11-04",
                  "2022-10-24", "2023-11-12", "2024-10-31", "2025-10-20", "2026-11-08"]
+  materialize_days: 7           # online store: load live features of the last 7 days (newest per city wins)

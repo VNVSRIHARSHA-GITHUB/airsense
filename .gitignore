@@ -11,3 +11,5 @@ data/raw/live/
 decisions.md
 .pytest_cache/
 *.egg-info/
+feature_repo/data/online_store.db
+feature_repo/data/registry.db

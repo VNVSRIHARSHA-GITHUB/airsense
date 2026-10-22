@@ -5,60 +5,60 @@ stages:
   validate_raw:
     cmd: python src/airsense/validation/validate_raw.py
     deps:
-      - src/airsense/validation/validate_raw.py
-      - data/raw/cpcb
+    - src/airsense/validation/validate_raw.py
+    - data/raw/cpcb
     params:
-      - data.cities
-      - validation.raw
+    - data.cities
+    - validation.raw
     outs:
-      - data/interim/raw_validation.json
+    - data/interim/raw_validation.json
 
   process_history:
     cmd: python src/airsense/processing/process_history.py
     deps:
-      - src/airsense/processing/process_history.py
-      - data/raw/cpcb
-      - data/interim/raw_validation.json
+    - src/airsense/processing/process_history.py
+    - data/raw/cpcb
+    - data/interim/raw_validation.json
     params:
-      - data.cities
-      - processing
-      - validation.raw.cap_value
+    - data.cities
+    - processing
+    - validation.raw.cap_value
     outs:
-      - data/processed/station_hourly
-      - data/processed/city_hourly
+    - data/processed/station_hourly
+    - data/processed/city_hourly
     metrics:
-      - data/interim/process_history_metrics.json:
-          cache: false
+    - data/interim/process_history_metrics.json:
+        cache: false
 
   process_live:
     cmd: python src/airsense/processing/process_live.py
     deps:
-      - src/airsense/processing/process_live.py
-      - data/raw/live/datagov
+    - src/airsense/processing/process_live.py
+    - data/raw/live/datagov
     params:
-      - data.cities
-      - live
-      - sources.datagov.min_records
+    - data.cities
+    - live
+    - sources.datagov.min_records
     outs:
-      - data/processed/live_station_hourly
-      - data/processed/live_city_hourly
+    - data/processed/live_station_hourly
+    - data/processed/live_city_hourly
     metrics:
-      - data/interim/process_live_metrics.json:
-          cache: false
+    - data/interim/process_live_metrics.json:
+        cache: false
 
   validate_processed:
     cmd: python src/airsense/validation/validate_processed.py
     deps:
-      - src/airsense/validation/validate_processed.py
-      - data/processed/city_hourly
-      - data/processed/live_city_hourly
+    - src/airsense/validation/validate_processed.py
+    - data/processed/city_hourly
+    - data/processed/live_city_hourly
     params:
-      - data.cities
-      - validation.processed
-      - validation.raw.cap_value
+    - data.cities
+    - validation.processed
+    - validation.raw.cap_value
     outs:
-      - data/interim/processed_validation.json:
-          cache: false
+    - data/interim/processed_validation.json:
+        cache: false
     # The live-freshness check depends on the current time, not only on the
     # inputs, so this (3-second) stage must run on every `dvc repro`.
     always_changed: true
@@ -66,64 +66,89 @@ stages:
   fetch_weather:
     cmd: python src/airsense/ingestion/fetch_weather_history.py
     deps:
-      - src/airsense/ingestion/fetch_weather_history.py
-      - src/airsense/ingestion/openmeteo_client.py
+    - src/airsense/ingestion/fetch_weather_history.py
+    - src/airsense/ingestion/openmeteo_client.py
     params:
-      - data.cities
-      - weather.archive.start_date
-      - weather.archive.end_date
+    - data.cities
+    - weather.archive.start_date
+    - weather.archive.end_date
     outs:
-      - data/raw/weather/archive
+    - data/raw/weather/archive
     metrics:
-      - data/interim/fetch_weather_metrics.json:
-          cache: false
+    - data/interim/fetch_weather_metrics.json:
+        cache: false
 
   validate_weather:
     cmd: python src/airsense/validation/validate_weather.py
     deps:
-      - src/airsense/validation/validate_weather.py
-      - src/airsense/ingestion/openmeteo_client.py
-      - data/raw/weather/archive
+    - src/airsense/validation/validate_weather.py
+    - src/airsense/ingestion/openmeteo_client.py
+    - data/raw/weather/archive
     params:
-      - data.cities
-      - weather
+    - data.cities
+    - weather
     outs:
-      - data/interim/weather_validation.json:
-          cache: false
+    - data/interim/weather_validation.json:
+        cache: false
 
   build_features_history:
     cmd: python src/airsense/features/build_features.py history
     deps:
-      - src/airsense/features/build_features.py
-      - data/processed/city_hourly
-      - data/raw/weather/archive
-      - data/interim/weather_validation.json
+    - src/airsense/features/build_features.py
+    - data/processed/city_hourly
+    - data/raw/weather/archive
+    - data/interim/weather_validation.json
     params:
-      - features.lags_hours
-      - features.change_hours
-      - features.rolling_hours
-      - features.rolling_min_hours
-      - features.rain_window_hours
-      - features.weather_offset_minutes
+    - features.lags_hours
+    - features.change_hours
+    - features.rolling_hours
+    - features.rolling_min_hours
+    - features.rain_window_hours
+    - features.weather_offset_minutes
     outs:
-      - data/features/pm_history
-      - data/features/weather_history
+    - data/features/pm_history
+    - data/features/weather_history
     metrics:
-      - data/interim/features_history_metrics.json:
-          cache: false
+    - data/interim/features_history_metrics.json:
+        cache: false
 
   build_features_live:
     cmd: python src/airsense/features/build_features.py live
     deps:
-      - src/airsense/features/build_features.py
-      - data/processed/live_city_hourly
+    - src/airsense/features/build_features.py
+    - data/processed/live_city_hourly
+    params:
+    - features.lags_hours
+    - features.change_hours
+    - features.rolling_hours
+    - features.rolling_min_hours
+    outs:
+    - data/features/pm_live
+    metrics:
+    - data/interim/features_live_metrics.json:
+        cache: false
+
+
+  feast_online:
+    # `feast apply` registers the definitions (idempotent, ~2 s), then feast_online.py
+    # loads the live features into the online store and checks them. The registry is
+    # Feast's working state (it writes to it during materialize), so it is not a DVC
+    # output; the definitions themselves are versioned in Git (feature_repo/).
+    cmd: feast -c feature_repo apply && python src/airsense/features/feast_online.py
+    deps:
+      - feature_repo/features.py
+      - feature_repo/feature_store.yaml
+      - src/airsense/features/feast_online.py
+      - data/features/pm_live
     params:
       - features.lags_hours
       - features.change_hours
       - features.rolling_hours
-      - features.rolling_min_hours
-    outs:
-      - data/features/pm_live
+      - features.rain_window_hours
+      - features.materialize_days
+      - validation.processed.max_live_age_hours
     metrics:
-      - data/interim/features_live_metrics.json:
+      - data/interim/feast_online_metrics.json:
           cache: false
+    # Freshness depends on the current time, so this stage runs on every repro.
+    always_changed: true

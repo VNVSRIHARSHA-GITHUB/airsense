@@ -6,6 +6,7 @@ import pytest
 from airsense.features.build_features import (
     calendar_features,
     complete_hourly_grid,
+    for_storage,
     pm_features,
     weather_features,
 )
@@ -142,3 +143,11 @@ def test_weekend_flag():
     times = pd.Series(pd.to_datetime(["2023-01-07 06:30", "2023-01-09 06:30"]))
     out = calendar_features(times, CFG)  # Saturday, Monday (IST)
     assert out["is_weekend"].tolist() == [1, 0]
+
+
+def test_storage_format_keeps_the_instant_and_labels_it_utc():
+    df = pm_table([1.0]).astype({"city": "category"})
+    out = for_storage(df)
+    assert str(out["time_utc"].dtype) == "datetime64[us, UTC]"
+    assert out["time_utc"].iloc[0] == pd.Timestamp("2023-01-01 00:30", tz="UTC")
+    assert out["city"].dtype == object

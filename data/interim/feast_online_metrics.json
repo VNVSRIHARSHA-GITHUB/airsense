@@ -1,0 +1,27 @@
+{
+  "checked_at_utc": "2026-10-22T10:54:31.099319+00:00",
+  "materialize_days": 7,
+  "materialize_seconds": 0.24,
+  "online_read_ms_median": 0.16,
+  "online_read_ms_max": 0.31,
+  "cities_in_online_store": 14,
+  "missing_cities": [],
+  "max_live_age_hours": 4,
+  "live_age_hours": {
+    "Ahmedabad": 2.4,
+    "Bengaluru": 2.4,
+    "Chandigarh": 2.4,
+    "Chennai": 2.4,
+    "Delhi": 2.4,
+    "Guwahati": 2.4,
+    "Hyderabad": 2.4,
+    "Jaipur": 2.4,
+    "Kanpur": 2.4,
+    "Kolkata": 2.4,
+    "Lucknow": 2.4,
+    "Mumbai": 2.4,
+    "Patna": 2.4,
+    "Pune": 2.4
+  },
+  "stale_cities": {}
+}
