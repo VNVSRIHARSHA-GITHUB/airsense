@@ -90,3 +90,40 @@ stages:
     outs:
       - data/interim/weather_validation.json:
           cache: false
+
+  build_features_history:
+    cmd: python src/airsense/features/build_features.py history
+    deps:
+      - src/airsense/features/build_features.py
+      - data/processed/city_hourly
+      - data/raw/weather/archive
+      - data/interim/weather_validation.json
+    params:
+      - features.lags_hours
+      - features.change_hours
+      - features.rolling_hours
+      - features.rolling_min_hours
+      - features.rain_window_hours
+      - features.weather_offset_minutes
+    outs:
+      - data/features/pm_history
+      - data/features/weather_history
+    metrics:
+      - data/interim/features_history_metrics.json:
+          cache: false
+
+  build_features_live:
+    cmd: python src/airsense/features/build_features.py live
+    deps:
+      - src/airsense/features/build_features.py
+      - data/processed/live_city_hourly
+    params:
+      - features.lags_hours
+      - features.change_hours
+      - features.rolling_hours
+      - features.rolling_min_hours
+    outs:
+      - data/features/pm_live
+    metrics:
+      - data/interim/features_live_metrics.json:
+          cache: false

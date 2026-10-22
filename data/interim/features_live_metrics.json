@@ -1,0 +1,29 @@
+{
+  "built_at_utc": "2026-10-22T09:59:34.743467+00:00",
+  "source": "live",
+  "seconds": 0.0,
+  "tables": {
+    "pm_live": {
+      "rows": 658,
+      "cities": 14,
+      "first_utc": "2026-10-20 09:30:00",
+      "last_utc": "2026-10-22 07:30:00",
+      "missing_fraction": {
+        "pm25_24h": 0.5456,
+        "n_stations_24h": 0.5456,
+        "pm25_lag_1h": 0.5669,
+        "pm25_lag_3h": 0.6094,
+        "pm25_lag_6h": 0.652,
+        "pm25_lag_12h": 0.652,
+        "pm25_lag_24h": 0.8222,
+        "pm25_lag_48h": 1.0,
+        "pm25_lag_72h": 1.0,
+        "pm25_change_1h": 0.617,
+        "pm25_change_6h": 0.9073,
+        "pm25_change_24h": 0.8647,
+        "pm25_mean_72h": 1.0,
+        "pm25_max_72h": 1.0
+      }
+    }
+  }
+}

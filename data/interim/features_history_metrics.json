@@ -1,0 +1,46 @@
+{
+  "built_at_utc": "2026-10-22T09:59:33.887551+00:00",
+  "source": "history",
+  "seconds": 2.0,
+  "tables": {
+    "pm_history": {
+      "rows": 1301754,
+      "cities": 14,
+      "first_utc": "2009-12-31 18:30:00",
+      "last_utc": "2023-03-31 17:30:00",
+      "missing_fraction": {
+        "pm25_24h": 0.3653,
+        "n_stations_24h": 0.0,
+        "pm25_lag_1h": 0.3653,
+        "pm25_lag_3h": 0.3653,
+        "pm25_lag_6h": 0.3654,
+        "pm25_lag_12h": 0.3654,
+        "pm25_lag_24h": 0.3656,
+        "pm25_lag_48h": 0.3658,
+        "pm25_lag_72h": 0.3661,
+        "pm25_change_1h": 0.3658,
+        "pm25_change_6h": 0.3678,
+        "pm25_change_24h": 0.374,
+        "pm25_mean_72h": 0.3564,
+        "pm25_max_72h": 0.3564
+      }
+    },
+    "weather_history": {
+      "rows": 858816,
+      "cities": 14,
+      "first_utc": "2016-12-31 23:30:00",
+      "last_utc": "2023-12-31 22:30:00",
+      "missing_fraction": {
+        "temperature_2m": 0.0,
+        "relative_humidity_2m": 0.0,
+        "precipitation": 0.0,
+        "wind_speed_10m": 0.0,
+        "surface_pressure": 0.0,
+        "cloud_cover": 0.0,
+        "wind_dir_sin": 0.0,
+        "wind_dir_cos": 0.0,
+        "rain_24h": 0.0004
+      }
+    }
+  }
+}

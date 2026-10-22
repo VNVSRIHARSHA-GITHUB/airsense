@@ -62,3 +62,16 @@ weather:
       surface_pressure: [850, 1050]  # hPa (Bengaluru, ~920 m altitude, sits near 910)
       wind_speed_10m: [0, 100]       # km/h (cyclones can exceed this on the coast)
       precipitation: [0, 100]        # mm in one hour
+
+features:                        # Stage 3 feature engineering (D37, D38)
+  train_start: "2018-01-01"      # first training row (D32); earlier hours only feed the lags
+  lags_hours: [1, 3, 6, 12, 24, 48, 72]   # pm25_24h this many hours before t
+  change_hours: [1, 6, 24]       # pm25_24h(t) - pm25_24h(t - k)
+  rolling_hours: 72              # longest look-back (D37 option B): mean and max over t-71 .. t
+  rolling_min_hours: 24          # rolling value only if at least this many hours are present
+  rain_window_hours: 24          # rain over the last 24 h
+  weather_offset_minutes: 30     # PM2.5 hour hh:30-hh+1:30 UTC gets the weather at hh+1:00 (D38)
+  local_timezone: "Asia/Kolkata" # calendar features in Indian time (D39)
+  festival_window_days: 2        # Diwali flag = Diwali date +/- 2 days (local dates)
+  diwali_dates: ["2017-10-19", "2018-11-07", "2019-10-27", "2020-11-14", "2021-11-04",
+                 "2022-10-24", "2023-11-12", "2024-10-31", "2025-10-20", "2026-11-08"]
