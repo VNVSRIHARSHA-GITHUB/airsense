@@ -1,16 +1,16 @@
 # AirSense — Data Sources
 
-This document describes every data source used by AirSense: what it contains, its format and update frequency, how it is accessed, its known issues, and its potential biases (AI Application Development Guidelines §II-A). Findings come from the exploratory analysis in `notebooks/01_eda.ipynb`.
+This document describes every data source used by AirSense: what it contains, its format and update frequency, how it is accessed, its licence, its known issues, and its potential biases (AI Application Development Guidelines §II-A). Findings come from the exploratory analysis in `notebooks/01_eda.ipynb` and from the validation reports of the pipeline (Stages 2–3).
 
 ---
 
 ## 1. Overview
 
-| Source | Role in the pipeline | Access | Update frequency | Versioned with |
-|---|---|---|---|---|
-| CPCB historical data (Kaggle) | Training history (PM2.5) | Kaggle API (`kaggle datasets download`) | Static snapshot (2010-01-01 to 2023-03-31) | DVC (`data/raw/cpcb.dvc`) |
-| CPCB real-time feed (data.gov.in) | Live inputs and "actual" measurements for monitoring | REST API, API key in `.env` | Hourly | Collected every 30 min (cron); DVC versioning planned for Stage 9 |
-| Open-Meteo weather | Weather features (training and serving) | REST API, no key | Hourly (forecast); archive back to 1940 | Snapshots saved under `data/raw/live/openmeteo/` |
+| Source | Role in the pipeline | Access | Update frequency | Versioned with | Licence |
+|---|---|---|---|---|---|
+| CPCB historical data (Kaggle) | Training history (PM2.5) | Kaggle API (`kaggle datasets download`) | Static snapshot (2010-01-01 to 2023-03-31) | DVC (`data/raw/cpcb.dvc`) | CC BY-NC-SA 4.0 |
+| CPCB real-time feed (data.gov.in) | Live inputs and "actual" measurements for monitoring | REST API, API key in `.env` | Hourly | Collected every 30 min (cron); DVC versioning planned for Stage 9 (D30) | GODL (India) |
+| Open-Meteo weather | Weather features: archive for training, forecast for serving | REST API, no key | Hourly; archive back to 1940 (≈ 5-day delay) | Archive: DVC stage `fetch_weather` (`data/raw/weather/archive/`); forecast: fetched at serving time (Stage 6) | CC BY 4.0 |
 
 All three sources measure or model the same quantities at the same locations, so the model sees consistent inputs during training and serving (design choice 1A: "CPCB measurements throughout").
 
@@ -89,16 +89,26 @@ All three sources measure or model the same quantities at the same locations, so
 ## 4. Open-Meteo weather
 
 - **Endpoints:**
-  - Forecast: `https://api.open-meteo.com/v1/forecast` — recent past days and the next days; used for serving.
-  - Archive: `https://archive-api.open-meteo.com/v1/archive` — ERA5 reanalysis back to 1940; used for training.
-- **Authentication:** none (free for non-commercial use).
-- **Client:** `src/airsense/ingestion/openmeteo_client.py`; one request covers all cities.
-- **Variables (hourly, UTC):** `temperature_2m`, `relative_humidity_2m`, `precipitation`, `wind_speed_10m`, `wind_direction_10m`, `surface_pressure`, `cloud_cover`.
+  - Archive: `https://archive-api.open-meteo.com/v1/archive`: historical weather back to 1940, used for **training**.
+  - Forecast: `https://api.open-meteo.com/v1/forecast`: recent past days and the next days, used for **serving**.
+- **What the archive is:** reanalysis, i.e. a weather model re-run over the past and continuously corrected with real observations (weather stations, satellites, balloons, aircraft). Open-Meteo's default ("best match") combines ERA5 (≈ 25 km grid), ERA5-Land and ECMWF IFS. Complete hourly data with no gaps; available with a ≈ 5-day delay.
+- **Authentication:** none. Free tier: 600 calls per minute, 5,000 per hour, 10,000 per day; a long multi-city request counts as many calls.
+- **Licence:** **CC BY 4.0**: free use, including derived works, **with attribution** ("Weather data by Open-Meteo.com"), in this document, the report and the application's UI. Use in public research and education is non-commercial under Open-Meteo's terms.
+- **Clients:** `src/airsense/ingestion/openmeteo_client.py` (one request covers all cities, retries on failure); `src/airsense/ingestion/fetch_weather_history.py` (archive download, one calendar year per request with a 65-s pause between years).
+- **Variables (hourly, UTC):** `temperature_2m` (°C), `relative_humidity_2m` (%), `precipitation` (mm in the hour), `wind_speed_10m` (km/h), `wind_direction_10m` (°), `surface_pressure` (hPa), `cloud_cover` (%).
 - **Locations:** the coordinates in `params.yaml` (mean location of each city's live CPCB stations), so weather is taken where PM2.5 is measured.
 
+### Archive download (Stage 3.2–3.3)
+- **Period:** 2017-01-01 to 2023-12-31 (2017 only feeds the 72-hour look-back of the first training rows, D32).
+- **Result:** 858,816 rows (14 cities × 7 years × 8,760 hours + the 2020 leap day) = exactly the expected count, **0 missing values**; 7 yearly Parquet files, 7 MB.
+- **Validation (Great Expectations, `validate_weather.py`):** critical checks (schema, one row per city-hour, complete hourly grid, physically possible values) passed; no plausibility warnings.
+- **Observed ranges (all cities, 2017–2023):** temperature 1.7 to 45.8 °C; humidity 3 to 100 %; precipitation up to 71.6 mm/h; wind speed up to 75.3 km/h; pressure 902 hPa (Bengaluru, ≈ 920 m altitude) to 1021 hPa; wind direction stored as 1–360° (north = 360).
+
 ### Known issues
-- **Gridded model output, not station measurements:** values represent an area around the coordinates, not a specific street.
-- **Archive vs. forecast:** training weather (reanalysis, close to what actually happened) differs in nature from serving weather (predicted). This is a mild training–serving skew, to be addressed in Stage 3.
+- **Gridded model output, not station measurements:** values represent an area around the coordinates; local effects (urban heat, wind blocked by buildings) are smoothed, and rain is the least accurate variable. Extreme peaks (cyclone winds, cloudbursts) are under-stated.
+- **Archive vs. forecast (training/serving skew, D34):** the model trains on what the weather *was* at the target hour and serves with what it is *forecast* to be. Accepted and measured in Stage 10 (forecast vs. archive error).
+- **Time grid:** weather comes at whole UTC hours, PM2.5 hours are labelled at :30 UTC. Each PM2.5 hour gets the weather at its middle (D38).
+- **Transient API errors:** occasionally an empty or cut-off response (twice in about 20 yearly requests); the client's retries absorbed both (`debug.md` #15).
 
 ---
 
@@ -137,6 +147,9 @@ Kanpur and Chandigarh have only 2 live stations each; their live coverage will b
 | 8 | **Live values are 24-hour rolling averages** (resolved) | Hourly training values would not match live inputs | Training target = 24-hour average computed like CPCB's (D21); exact window to re-check |
 | 9 | **Laptop-based live collection** | Hours when the laptop is off are permanently missing (e.g. 02:05–18:24 IST on 21 Oct 2026) | Accepted for a course project; gaps handled in cleaning; freshness monitored |
 | 10 | **Single-station hours** (Chandigarh, at times Kanpur) | The city value rests on one sensor | Live-station count checked in processed-data validation (warning) |
+| 11 | **COVID lockdown kept in training** (late March – May 2020, ≈ 4% of training rows) | Abnormally low pollution for reasons that will not recur; slightly widens the drift reference | Documented on purpose (D32); excluding it would be a one-line filter |
+| 12 | **Unequal training rows per city:** Pune has 19.8% of hours since 2018 without a value (station outages lasting weeks); cities whose history starts after January 2018 have fewer rows | The model sees less of these cities, so their forecasts may be weaker | No imputation (D40); per-city error breakdown in Stage 4 |
+| 13 | **Reanalysis weather smooths extremes** | Weather-driven peaks are learned from muted inputs | Documented; serving uses forecasts with the same definitions |
 
 ---
 
@@ -152,3 +165,31 @@ Kanpur and Chandigarh have only 2 live stations each; their live coverage will b
 | `data/interim/processed_validation.json` | `validate_processed.py` | Critical and warning results for both city tables |
 
 All outputs are Parquet (partitioned by city) or JSON, produced by the DVC pipeline (`dvc.yaml`); times are UTC.
+
+---
+
+## 8. Features and training data (Stage 3)
+
+| Output | Produced by | Contents |
+|---|---|---|
+| `data/raw/weather/archive/` | `fetch_weather_history.py` | Hourly archive weather per city, 2017–2023 (one file per year) |
+| `data/interim/weather_validation.json` | `validate_weather.py` | Critical and warning results; observed range of each variable |
+| `data/features/pm_history/` | `build_features.py history` | PM2.5 features per city-hour (2010–2023): current level, lags, changes, 72-h mean and max |
+| `data/features/weather_history/` | `build_features.py history` | Weather features per city-hour, relabelled to the PM2.5 hour they describe (D38) |
+| `data/features/pm_live/` | `build_features.py live` | The same PM2.5 features from the live feed (for serving) |
+| `feature_repo/` | Feast (`feast apply`) | Feature definitions: entity `city`, views `pm_history`, `weather_history`, `pm_live` |
+| `data/training/h01.parquet … h24.parquet` | `build_training.py` (Feast point-in-time join) | The training table: one row per (city, hour, horizon) |
+| `data/interim/features_*_metrics.json`, `training_metrics.json`, `feast_online_metrics.json` | the scripts above | Row counts, missing fractions, timing, online-store freshness and consistency |
+
+**Training table:** 14,322,291 rows × 43 columns, Jan 2018 – Mar 2023 (≈ 5.25 years), 24 horizons; built from 619,547 city-hours, of which 596,864 (96.3%) have a target. Full list of columns: `docs/features.md`.
+
+**Storage format:** the feature and training tables store times labelled as UTC in microseconds (`datetime64[us, UTC]`), unlike the naive-UTC tables of Stage 2, because Feast's DuckDB offline store needs them (D41). Files are written deterministically (sorted rows, fixed file names), so identical inputs give byte-identical outputs (D43).
+
+---
+
+## 9. Attribution (required by the licences)
+
+The documentation, the report and the application's UI credit:
+- **CPCB** (Central Pollution Control Board, cpcb.nic.in) and the Kaggle dataset author, for the historical data (CC BY-NC-SA 4.0);
+- **data.gov.in** (CPCB real-time feed), under the Government Open Data License – India;
+- **Open-Meteo.com**, for weather data (CC BY 4.0).
