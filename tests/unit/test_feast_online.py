@@ -1,6 +1,7 @@
 """Unit tests for the online-store freshness helper (Stage 3.5)."""
 
 import pandas as pd
+
 from airsense.features.feast_online import compare_online_offline, newest_hours
 
 NOW = pd.Timestamp("2026-10-22 10:00", tz="UTC")

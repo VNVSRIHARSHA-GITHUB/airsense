@@ -2,6 +2,7 @@
 
 import pandas as pd
 import pytest
+
 from airsense.ingestion.fetch_weather_history import (
     expected_rows,
     to_naive_utc,

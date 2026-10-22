@@ -1,6 +1,7 @@
 """Unit tests for the weather validation helpers (Stage 3.3)."""
 
 import pandas as pd
+
 from airsense.validation.validate_weather import city_summary
 
 

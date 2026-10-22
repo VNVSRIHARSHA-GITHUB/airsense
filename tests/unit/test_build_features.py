@@ -3,14 +3,15 @@
 import numpy as np
 import pandas as pd
 import pytest
+
 from airsense.features.build_features import (
     calendar_features,
     complete_hourly_grid,
     for_storage,
     min_history_hours,
-    write_parquet,
     pm_features,
     weather_features,
+    write_parquet,
 )
 
 CFG = {

@@ -20,3 +20,4 @@ markers = ["spark: starts a local Spark session (slower, ~10 s once per test run
 [tool.ruff]
 line-length = 88
 target-version = "py312"
+extend-exclude = ["notebooks"]

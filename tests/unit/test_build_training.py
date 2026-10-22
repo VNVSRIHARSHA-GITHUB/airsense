@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+
 from airsense.features.build_training import compact, entity_rows, expand_horizon
 
 CAL = {
