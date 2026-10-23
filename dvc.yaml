@@ -191,3 +191,27 @@ stages:
     metrics:
       - data/interim/train_metrics.json:
           cache: false
+
+  gate:
+    cmd: python src/airsense/training/gate.py
+    deps:
+      - src/airsense/training/gate.py
+      - data/interim/train_metrics.json
+    params:
+      - gate
+    outs:
+      - data/interim/gate_report.json:
+          cache: false
+
+  register:
+    cmd: python src/airsense/training/register.py
+    deps:
+      - src/airsense/training/register.py
+      - data/interim/gate_report.json
+      - data/interim/train_metrics.json
+      - models/lgbm_model.txt
+    params:
+      - registry
+    outs:
+      - data/interim/registry.json:
+          cache: false

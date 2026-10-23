@@ -1,0 +1,13 @@
+{
+  "decided_at_utc": "2026-10-23T07:48:48.576198+00:00",
+  "model_name": "airsense-pm25",
+  "challenger_version": 1,
+  "challenger_run_id": "0fe9f02288e6415e9cb45588dd3fce7e",
+  "challenger_val_mae": 4.481,
+  "previous_champion_version": null,
+  "previous_champion_val_mae": null,
+  "promoted": true,
+  "reason": "no champion yet",
+  "champion_version": 1,
+  "champion_uri": "models:/airsense-pm25@champion"
+}

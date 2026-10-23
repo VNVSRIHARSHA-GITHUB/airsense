@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# AirSense pre-commit check (Stage 5, D51): lint and quick tests before every commit.
+# A commit is refused if either fails. Enable once per clone:
+#     git config core.hooksPath .githooks
+# Emergency bypass (avoid): git commit --no-verify
+set -e
+cd "$(git rev-parse --show-toplevel)"
+BIN=.venv/bin
+if [ ! -x "$BIN/ruff" ] || [ ! -x "$BIN/pytest" ]; then
+    echo "pre-commit: .venv with ruff and pytest not found in $(pwd)" >&2
+    exit 1
+fi
+echo "pre-commit: ruff check ..."
+"$BIN/ruff" check .
+echo "pre-commit: quick unit tests ..."
+"$BIN/pytest" -m "not spark" -q
+echo "pre-commit: OK"

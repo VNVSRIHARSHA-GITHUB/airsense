@@ -104,3 +104,15 @@ train:                           # Stage 4 (D44-D46)
   target_mode: change            # "level" = predict PM2.5; "change" = predict the change from now (D48)
   shap_sample: 5000              # test rows explained with SHAP
   mlflow_experiment: airsense-pm25
+
+gate:                            # Stage 5 sanity gate, checked on VALIDATION (D49)
+  min_skill: 0.05                # overall: at least 5% lower MAE than persistence
+  horizon_tolerance: 1.05        # every horizon: model MAE <= 1.05 x persistence MAE
+  min_city_skill: -0.05          # every city: at most 5% worse than persistence
+  min_aqi_accuracy: 0.70         # AQI category right in at least 70% of forecasts
+  prediction_range: [0, 1000]    # forecasts must be finite and in the possible range (ug/m3)
+  max_no_forecast_share: 0.01    # "change" mode: at most 1% of hours without a forecast (no current value)
+
+registry:                        # MLflow Model Registry, champion / challenger (D50)
+  model_name: airsense-pm25
+  min_improvement: 0.01          # challenger must beat the re-scored champion's validation MAE by >= 1%

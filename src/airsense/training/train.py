@@ -380,7 +380,8 @@ def main() -> int:
         booster.best_iteration,
     )
 
-    results, per_h, per_city = {}, {}, {}
+    results, per_h, per_city, checks = {}, {}, {}, {}
+    names = {v: k for k, v in codes["city"].items()}
     for name in ("val", "test"):
         part = parts[name]
         part["model"] = to_level(
@@ -392,19 +393,33 @@ def main() -> int:
             m: score(part["target"], part[m], part["persistence"])
             for m in ("model", "persistence", "yesterday")
         }
-        if name == "test":
-            per_h = {m: score_groups(part, m, "horizon") for m in results[name]}
-            names = {v: k for k, v in codes["city"].items()}
-            per_city = score_groups(
-                part.assign(city=part["city"].map(names)), "model", "city"
-            )
-            test_part = part
+        # Breakdowns for both sets: the gate (Stage 5) decides on validation.
+        per_h[name] = {m: score_groups(part, m, "horizon") for m in results[name]}
+        per_city[name] = score_groups(
+            part.assign(city=part["city"].map(names)), "model", "city"
+        )
+        # In "change" mode a forecast needs the current value: hours without one
+        # (station outages) get no forecast. Counted separately; every other
+        # forecast must be a finite number (checked by the gate, D49).
+        pred = part["model"].to_numpy()
+        expected = (
+            part["pm25_24h"].notna().to_numpy()
+            if mode == "change"
+            else np.ones(len(part), bool)
+        )
+        checks[name] = {
+            "non_finite": int((~np.isfinite(pred[expected])).sum()),
+            "no_forecast_share": round(float((~expected).mean()), 5),
+            "min": float(np.nanmin(pred)),
+            "max": float(np.nanmax(pred)),
+        }
+    test_part = parts["test"]
     elapsed = time.perf_counter() - start
 
     MODEL_FILE.parent.mkdir(parents=True, exist_ok=True)
     booster.save_model(str(MODEL_FILE), num_iteration=booster.best_iteration)
     REPORTS.mkdir(parents=True, exist_ok=True)
-    plot_by_horizon(per_h, REPORTS / "mae_by_horizon.png")
+    plot_by_horizon(per_h["test"], REPORTS / "mae_by_horizon.png")
     sample = test_part[features].sample(
         min(cfg["shap_sample"], len(test_part)), random_state=0
     )
@@ -449,16 +464,20 @@ def main() -> int:
                 for k, v in s.items():
                     if k != "n":
                         mlflow.log_metric(f"{split_name}_{model_name}_{k}", v)
-        for h in sorted(int(h) for h in per_h["model"]):
-            for model_name in per_h:
-                if "mae" in per_h[model_name].get(str(h), {}):
-                    mlflow.log_metric(
-                        f"test_mae_by_horizon_{model_name}",
-                        per_h[model_name][str(h)]["mae"],
-                        step=h,
-                    )
-        for city, s in per_city.items():
-            mlflow.log_metric(f"test_mae_city_{city.replace(' ', '_')}", s["mae"])
+        for split_name, by_model in per_h.items():
+            for model_name, by_h in by_model.items():
+                for h, s in by_h.items():
+                    if "mae" in s:
+                        mlflow.log_metric(
+                            f"{split_name}_mae_by_horizon_{model_name}",
+                            s["mae"],
+                            step=int(h),
+                        )
+        for split_name, by_city in per_city.items():
+            for city, s in by_city.items():
+                mlflow.log_metric(
+                    f"{split_name}_mae_city_{city.replace(' ', '_')}", s["mae"]
+                )
         mlflow.log_metric("train_seconds", train_s)
         mlflow.log_artifacts(str(REPORTS), artifact_path="plots")
         mlflow.log_dict(codes, "category_codes.json")  # needed to call the model
@@ -482,9 +501,12 @@ def main() -> int:
         "category_codes": codes,
         "val": results["val"],
         "test": results["test"],
-        "test_by_city": per_city,
+        "prediction_check": checks,
+        "val_by_horizon": per_h["val"],
+        "val_by_city": per_city["val"],
+        "test_by_city": per_city["test"],
         "test_mae_by_horizon": {
-            m: {h: s.get("mae") for h, s in v.items()} for m, v in per_h.items()
+            m: {h: s.get("mae") for h, s in v.items()} for m, v in per_h["test"].items()
         },
         "shap_mean_abs": importance,
     }

@@ -1,0 +1,42 @@
+{
+  "checked_at_utc": "2026-10-23T07:48:46.050168+00:00",
+  "mlflow_run_id": "0fe9f02288e6415e9cb45588dd3fce7e",
+  "passed": true,
+  "checks": [
+    {
+      "check": "overall_skill",
+      "passed": true,
+      "value": 0.2028,
+      "threshold": 0.05,
+      "detail": ""
+    },
+    {
+      "check": "every_horizon_vs_persistence",
+      "passed": true,
+      "value": "0 of 24 horizons fail",
+      "threshold": "model MAE <= 1.05 x persistence MAE",
+      "detail": ""
+    },
+    {
+      "check": "every_city_vs_persistence",
+      "passed": true,
+      "value": "0 of 14 cities fail",
+      "threshold": "city skill >= -0.05",
+      "detail": ""
+    },
+    {
+      "check": "aqi_category_accuracy",
+      "passed": true,
+      "value": 0.8659,
+      "threshold": 0.7,
+      "detail": ""
+    },
+    {
+      "check": "predictions_valid",
+      "passed": true,
+      "value": "min 2.3, max 470.2, non-finite 0, no forecast 0.106%",
+      "threshold": "finite, within [0, 1000], no forecast <= 1.0%",
+      "detail": ""
+    }
+  ]
+}
