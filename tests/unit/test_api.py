@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from main import create_app
 
+from airsense.serving.service import ModelServerError
+
 
 class FakeService:
     def __init__(self):
@@ -29,6 +31,8 @@ class FakeService:
         ]
 
     def forecast(self, city, group="general"):
+        if group == "outdoor_workers":
+            raise ModelServerError("connection refused")
         if group == "sensitive":
             return {
                 "city": city,
@@ -74,6 +78,8 @@ class FakeService:
         }
 
     def guidance(self, category, group="general"):
+        if group == "outdoor_workers":
+            raise RuntimeError("storage folder is already accessed")
         return [
             {
                 "category": category,
@@ -118,3 +124,10 @@ def test_other_endpoints():
     assert client.get("/cities").json()[0]["city"] == "Delhi"
     assert client.get("/model").json()["version"] == "1"
     assert client.get("/guidance", params={"category": "Poor"}).json()[0]["text"]
+
+
+def test_backend_failures_are_503_not_500():
+    r = client.get("/forecast/Delhi", params={"group": "outdoor_workers"})
+    assert r.status_code == 503 and "Model server" in r.json()["detail"]
+    r = client.get("/guidance", params={"category": "Poor", "group": "outdoor_workers"})
+    assert r.status_code == 503

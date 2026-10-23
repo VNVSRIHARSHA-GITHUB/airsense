@@ -1,4 +1,4 @@
-"""AirSense backend API (Stage 6, D53).
+"""AirSense backend API (Stage 6).
 
 Run from the project root:
     uvicorn main:app --app-dir backend --port 8000
@@ -13,12 +13,18 @@ Endpoints (the API contract, documented in the LLD):
 Interactive documentation: http://127.0.0.1:8000/docs
 """
 
+import logging
 from contextlib import asynccontextmanager
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from airsense.serving.service import ModelServerError
+
+log = logging.getLogger("airsense.api")
+
 
 Category = Literal["Good", "Satisfactory", "Moderate", "Poor", "Very Poor", "Severe"]
 Group = Literal["general", "sensitive", "outdoor_workers"]
@@ -112,6 +118,10 @@ def create_app(service=None) -> FastAPI:
     def svc():
         return state["service"]
 
+    def unavailable(what: str, exc: Exception) -> HTTPException:
+        log.error("%s unavailable: %s", what, exc)
+        return HTTPException(503, f"{what} unavailable, try again later")
+
     @app.get("/health")
     def health() -> dict:
         return svc().health()
@@ -124,7 +134,10 @@ def create_app(service=None) -> FastAPI:
     def forecast(city: str, group: Group = "general"):
         if city not in svc().cities:
             raise HTTPException(404, f"Unknown city '{city}'")
-        return svc().forecast(city, group)
+        try:
+            return svc().forecast(city, group)
+        except ModelServerError as exc:
+            raise unavailable("Model server", exc) from None
 
     @app.get("/model")
     def model() -> dict:
@@ -132,7 +145,10 @@ def create_app(service=None) -> FastAPI:
 
     @app.get("/guidance", response_model=list[Guidance])
     def guidance(category: Category, group: Group = "general"):
-        return svc().guidance(category, group)
+        try:
+            return svc().guidance(category, group)
+        except Exception as exc:  # noqa: BLE001 - index locked or model missing
+            raise unavailable("Guidance index", exc) from None
 
     return app
 

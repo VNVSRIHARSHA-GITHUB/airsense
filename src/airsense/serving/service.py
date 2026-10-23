@@ -1,11 +1,11 @@
-"""The forecasting service behind the API (Stage 6, D53).
+"""The forecasting service behind the API (Stage 6).
 
 One request for a city:
   1. live PM2.5 features from Feast's online store, with their timestamp;
-     too old or missing -> "no forecast" with a reason (D49);
+     too old or missing -> "no forecast" with a reason;
   2. weather forecast from Open-Meteo (all cities, cached), through the same
      weather_features() as training; each fetch is saved (for Stage 10's
-     archive-vs-forecast check, D34);
+     archive-vs-forecast check);
   3. 24 input rows built exactly as in training (assemble.build_rows);
   4. the MLflow model server (champion) predicts; to_level() turns the predicted
      change into PM2.5; each value gets its CPCB AQI category;
@@ -53,6 +53,15 @@ def load_params() -> dict:
         return yaml.safe_load(f)
 
 
+class ModelServerError(RuntimeError):
+    """The model server could not be reached or gave no usable answer."""
+
+
+def _value(v) -> float | None:
+    """A feature value as float, or None if missing (None or NaN)."""
+    return None if v is None or not np.isfinite(float(v)) else float(v)
+
+
 class ModelServerClient:
     """Calls `mlflow models serve` (POST /invocations, pandas 'split' JSON)."""
 
@@ -67,9 +76,14 @@ class ModelServerClient:
                 "data": json.loads(rows.to_json(orient="values")),  # NaN -> null
             }
         }
-        r = httpx.post(f"{self.url}/invocations", json=payload, timeout=self.timeout_s)
-        r.raise_for_status()
-        return np.asarray(r.json()["predictions"], dtype=float)
+        try:
+            r = httpx.post(
+                f"{self.url}/invocations", json=payload, timeout=self.timeout_s
+            )
+            r.raise_for_status()
+            return np.asarray(r.json()["predictions"], dtype=float)
+        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            raise ModelServerError(f"model server at {self.url}: {exc}") from exc
 
     def ping(self) -> bool:
         try:
@@ -125,6 +139,7 @@ class ForecastService:
         self._weather_problem: str | None = None
         self._weather_lock = threading.Lock()
         self._guidance = None  # opened on first use (loads the embedding model)
+        self._guidance_lock = threading.Lock()  # local Qdrant: open only once
 
     # ---------- inputs ----------
 
@@ -160,7 +175,9 @@ class ForecastService:
                     past_days=self.cfg["weather_past_days"],
                     forecast_days=self.cfg["weather_forecast_days"],
                 )
-                save_snapshot(raw)  # kept for the forecast-vs-archive check (D34)
+                save_snapshot(
+                    raw
+                )  # kept for the forecast-vs-archive check (Stage 10 check)
                 self._weather = weather_features(raw, self.params["features"])
                 self._weather_at = time.monotonic()
                 return self._weather, None
@@ -171,6 +188,10 @@ class ForecastService:
                 return self._weather, self._weather_problem
 
     def guidance_index(self):
+        with self._guidance_lock:  # two first requests must not both open Qdrant
+            return self._open_guidance()
+
+    def _open_guidance(self):
         if self._guidance is None:
             from airsense.guidance.index import open_client, sentence_embedder
 
@@ -195,7 +216,7 @@ class ForecastService:
             raise KeyError(city)
         now = pd.Timestamp.now(tz="UTC")
         feats, t = self.live_features(city)
-        current = feats.get("pm25_24h")
+        current = _value(feats.get("pm25_24h"))
         out = {
             "city": city,
             "region": self.cities[city]["region"],
@@ -244,9 +265,14 @@ class ForecastService:
             )
 
         start = time.perf_counter()
-        raw = self.model_server.predict(rows)
-        pm25 = to_level(raw, np.full(len(raw), current), self.model["target_mode"])
+        raw = self.model_server.predict(rows)  # ModelServerError -> HTTP 503
         latency_ms = (time.perf_counter() - start) * 1000
+        pm25 = to_level(raw, np.full(len(raw), current), self.model["target_mode"])
+        if len(pm25) != len(rows) or not np.isfinite(pm25).all():
+            return {**out, "available": False, "reason": "model gave no valid forecast"}
+        if (pm25 < 0).any():  # a predicted fall larger than the current value
+            out["warnings"].append("negative forecasts set to 0")
+            pm25 = np.clip(pm25, 0, None)
 
         hours = [
             {
@@ -269,8 +295,8 @@ class ForecastService:
             **out,
             "available": True,
             "current": {
-                "pm25_24h": round(float(current), 1),
-                "aqi_category": aqi_name(float(current)),
+                "pm25_24h": round(current, 1),
+                "aqi_category": aqi_name(current),
                 "time_utc": t.isoformat(),
                 "time_ist": t.tz_convert(IST).strftime("%a %d %b %H:%M"),
                 "age_hours": round(age_h, 1),
@@ -290,13 +316,13 @@ class ForecastService:
         now = pd.Timestamp.now(tz="UTC")
         for city, v in self.cities.items():
             feats, t = self.live_features(city)
-            value = feats.get("pm25_24h")
+            value = _value(feats.get("pm25_24h"))
             rows.append(
                 {
                     "city": city,
                     "region": v["region"],
-                    "pm25_24h": None if value is None else round(float(value), 1),
-                    "aqi_category": None if value is None else aqi_name(float(value)),
+                    "pm25_24h": None if value is None else round(value, 1),
+                    "aqi_category": aqi_name(value),
                     "age_hours": None
                     if t is None
                     else round((now - t).total_seconds() / 3600, 1),
@@ -312,9 +338,13 @@ class ForecastService:
             ).version
         except Exception:  # noqa: BLE001 - health reports it instead of failing
             registry_champion = None
+        try:
+            store_ok = self.live_features(next(iter(self.cities)))[1] is not None
+        except Exception:  # noqa: BLE001 - health reports it instead of failing
+            store_ok = False
         checks = {
             "model_server": self.model_server.ping(),
-            "feature_store": self.live_features(next(iter(self.cities)))[1] is not None,
+            "feature_store": store_ok,
             "champion_up_to_date": str(registry_champion) == str(self.model["version"]),
         }
         return {

@@ -41,7 +41,7 @@ def build_rows(
     pm:      PM2.5 feature values at t (from Feast online), by feature name;
     t:       forecast time (UTC-aware), the PM2.5 hour the features describe;
     weather: output of weather_features() for this city (time_utc UTC-aware,
-             already relabelled to the PM2.5 hour convention, D38).
+             already relabelled to the PM2.5 hour convention: weather at 11:00 describes the hour labelled 10:30).
     Returns the rows (columns in the model's order), the target times, and the
     number of hours whose weather was missing (filled with NaN; LightGBM copes).
     """

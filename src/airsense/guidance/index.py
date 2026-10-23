@@ -1,4 +1,4 @@
-"""Health-guidance texts: parse, embed, store in Qdrant, search (Stage 6, D53).
+"""Health-guidance texts: parse, embed, store in Qdrant, search (Stage 6).
 
 Source texts: guidance_docs/<category>.md, written in our own words from CPCB's AQI
 health statements and WHO public advice (sources listed in each file). Each file

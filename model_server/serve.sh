@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MLflow model server for the champion model (Stage 6, D53).
+# MLflow model server for the champion model (Stage 6).
 # Serves models:/airsense-pm25@champion over REST: POST /invocations, GET /ping.
 # Run from the project root with the venv active:  bash model_server/serve.sh
 # A new champion (Stage 5 registry) is picked up by restarting this server.

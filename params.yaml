@@ -117,7 +117,7 @@ registry:                        # MLflow Model Registry, champion / challenger 
   model_name: airsense-pm25
   min_improvement: 0.01          # challenger must beat the re-scored champion's validation MAE by >= 1%
 
-serving:                         # Stage 6 backend (D53)
+serving:                         # Stage 6 backend
   model_server_url: http://127.0.0.1:5002   # `mlflow models serve` of the champion
   weather_cache_minutes: 30      # one Open-Meteo forecast call per 30 min for all cities
   weather_retry_minutes: 5       # after a failed call, wait before trying again
@@ -125,7 +125,7 @@ serving:                         # Stage 6 backend (D53)
   weather_forecast_days: 3       # covers t+24 h for every city
   top_factors: 4                 # factors shown in the explanation
 
-guidance:                        # Stage 6 health guidance search (D53)
+guidance:                        # Stage 6 health guidance search
   docs_dir: guidance_docs
   qdrant_path: data/qdrant       # local (embedded) Qdrant now; own container in Stage 8
   collection: guidance
