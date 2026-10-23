@@ -42,7 +42,7 @@ processing:
   driver_memory: "6g"         # memory for Spark (leaves ~8 GB for everything else)
   shuffle_partitions: 24      # parallel tasks when grouping (default 200 is too many for this data)
   stuck_run_hours: 24         # >= this many identical consecutive hours = stuck sensor
-  avg_window_hours: 24        # CPCB 24-hour average (D21; re-check tomorrow)
+  avg_window_hours: 24        # live avg_value = 24 h rolling mean (D21: confirmed on 46 h and on a 28 h continuous stretch)
   min_valid_hours: 16         # CPCB minimum data rule for the 24-hour average
 
 live:
@@ -116,3 +116,17 @@ gate:                            # Stage 5 sanity gate, checked on VALIDATION (D
 registry:                        # MLflow Model Registry, champion / challenger (D50)
   model_name: airsense-pm25
   min_improvement: 0.01          # challenger must beat the re-scored champion's validation MAE by >= 1%
+
+serving:                         # Stage 6 backend (D53)
+  model_server_url: http://127.0.0.1:5002   # `mlflow models serve` of the champion
+  weather_cache_minutes: 30      # one Open-Meteo forecast call per 30 min for all cities
+  weather_retry_minutes: 5       # after a failed call, wait before trying again
+  weather_past_days: 2           # past hours needed for "now" weather and 24 h rain
+  weather_forecast_days: 3       # covers t+24 h for every city
+  top_factors: 4                 # factors shown in the explanation
+
+guidance:                        # Stage 6 health guidance search (D53)
+  docs_dir: guidance_docs
+  qdrant_path: data/qdrant       # local (embedded) Qdrant now; own container in Stage 8
+  collection: guidance
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2

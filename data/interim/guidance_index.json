@@ -1,0 +1,19 @@
+{
+  "built_at_utc": "2026-10-23T11:46:37.491102+00:00",
+  "points": 18,
+  "categories": [
+    "Good",
+    "Moderate",
+    "Poor",
+    "Satisfactory",
+    "Severe",
+    "Very Poor"
+  ],
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "seconds": 58.9,
+  "check_query": {
+    "category": "Poor",
+    "group": "sensitive"
+  },
+  "check_result_group": "sensitive"
+}

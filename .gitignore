@@ -14,3 +14,4 @@ decisions.md
 feature_repo/data/online_store.db
 feature_repo/data/registry.db
 worklog.md
+data/qdrant/
