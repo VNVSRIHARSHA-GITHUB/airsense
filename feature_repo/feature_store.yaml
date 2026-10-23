@@ -1,10 +1,10 @@
-# Feast configuration (Stage 3.5, D36). Paths are relative to this folder.
+# Feast configuration (Stage 3.5). Paths are relative to this folder.
 project: airsense
 provider: local
 registry: data/registry.db          # feature definitions, written by `feast apply`
 online_store:
-  type: sqlite                      # D36: SQLite now, Redis in Stage 8
+  type: sqlite                      # SQLite now, Redis in Stage 8
   path: data/online_store.db        # latest live features per city, for serving
 offline_store:
-  type: duckdb                      # D41: point-in-time joins in DuckDB (the default "file" store ran out of memory)
+  type: duckdb                      # point-in-time joins in DuckDB (the default "file" store ran out of memory)
 entity_key_serialization_version: 3

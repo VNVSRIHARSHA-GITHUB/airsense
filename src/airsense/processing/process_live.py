@@ -1,6 +1,6 @@
 """Process the live data.gov.in snapshots into city-level 24-hour PM2.5 (Stage 2.4).
 
-The live feed already reports each station's 24-hour average (avg_value, D21), so
+The live feed already reports each station's 24-hour average (avg_value), so
 this step only has to clean, de-duplicate and aggregate it, and produce exactly the
 same columns as the processed history (data/processed/city_hourly) so that live
 and training data can be compared and used without special cases.

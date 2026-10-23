@@ -1,11 +1,11 @@
-"""Feature engineering shared by training and serving (Stage 3.4, D37).
+"""Feature engineering shared by training and serving (Stage 3.4).
 
 The same functions run on history (training) and on live data (serving), so both
 compute features in exactly the same way (no training/serving skew):
 
 - complete_hourly_grid: one row per city per hour, so "lag 24" means 24 HOURS back
   (not 24 rows back) even when hours are missing;
-- pm_features:      from the city's 24-hour average PM2.5 only (D35: the live feed
+- pm_features:      from the city's 24-hour average PM2.5 only (the live feed
                     has no hourly values): current level, lags, changes, rolling;
 - weather_features: weather variables, wind direction as sin/cos, recent rain;
                     relabelled to the PM2.5 hour convention (see below);
@@ -13,12 +13,12 @@ compute features in exactly the same way (no training/serving skew):
                     Pure functions of time, so they are computed when the training
                     set is built and at serving time, not stored.
 
-Time alignment (D38): PM2.5 rows are labelled at :30 UTC (the IST hour 16:00-17:00
+Time alignment: PM2.5 rows are labelled at :30 UTC (the IST hour 16:00-17:00
 is stored as 10:30 UTC); weather comes at whole UTC hours. Each PM2.5 hour is matched
 with the weather at its middle: the 10:30 row gets the 11:00 weather. The weather
 table is therefore relabelled by -30 minutes, so both tables join on time_utc.
 
-Stored tables carry UTC-labelled timestamps (for_storage, D41), unlike the naive-UTC
+Stored tables carry UTC-labelled timestamps (for_storage), unlike the naive-UTC
 tables of Stage 2, because Feast's DuckDB offline store needs them.
 
 Usage (one DVC stage each):
@@ -77,7 +77,7 @@ def complete_hourly_grid(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def min_history_hours(cfg: dict) -> int:
-    """Hours of past data the newest PM2.5 features need (longest look-back, D37).
+    """Hours of past data the newest PM2.5 features need (longest look-back).
 
     Serving only has recent live data; with at least this many hours before t,
     the features at t are identical to those computed on the full history.
@@ -110,7 +110,7 @@ def pm_features(pm: pd.DataFrame, cfg: dict) -> pd.DataFrame:
 
 
 def weather_features(weather: pd.DataFrame, cfg: dict) -> pd.DataFrame:
-    """Weather features, relabelled to the PM2.5 hour they describe (D38)."""
+    """Weather features, relabelled to the PM2.5 hour they describe."""
     df = complete_hourly_grid(weather.assign(city=weather["city"].astype(str)))
     rad = np.deg2rad(df["wind_direction_10m"])
     df["wind_dir_sin"] = np.sin(rad)  # 0 deg and 360 deg give the same values
@@ -165,7 +165,7 @@ def calendar_features(times_utc: pd.Series, cfg: dict) -> pd.DataFrame:
 
 
 def for_storage(df: pd.DataFrame) -> pd.DataFrame:
-    """Prepare a feature table for the Feast offline store (D41).
+    """Prepare a feature table for the Feast offline store.
 
     Times get an explicit UTC label, in microseconds. Feast's DuckDB offline store
     reads a naive timestamp as LOCAL time of the computer (IST on the laptop, a
@@ -185,7 +185,7 @@ def write_parquet(df: pd.DataFrame, out_dir: Path) -> None:
 
     Fixed file names (part-0.parquet) instead of pyarrow's random ones: identical
     data then gives an identical folder, so DVC sees "unchanged" and does not
-    re-run the stages after it (D43).
+    re-run the stages after it.
     """
     if out_dir.exists():
         shutil.rmtree(out_dir)

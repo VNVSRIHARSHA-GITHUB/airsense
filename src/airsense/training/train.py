@@ -1,16 +1,16 @@
 """Train, evaluate and explain the PM2.5 forecaster, tracked in MLflow (Stage 4).
 
 1. Load the training table (data/training/, built through Feast in Stage 3).
-2. Split by time (D44): train / validation / test, with a gap at each boundary so
+2. Split by time: train / validation / test, with a gap at each boundary so
    no target window of one set overlaps another.
 3. Baselines: persistence (the current value for every horizon) and "same hour
    yesterday" (the value at t + h - 24, already known at t).
-4. LightGBM: one model with the horizon as a feature (D31), early stopping on the
+4. LightGBM: one model with the horizon as a feature, early stopping on the
    validation set.
-5. Metrics (D45): MAE, RMSE, skill vs persistence, AQI-category accuracy; overall,
+5. Metrics: MAE, RMSE, skill vs persistence, AQI-category accuracy; overall,
    per horizon and per city.
 6. SHAP: what drives the forecasts, and how that changes with the horizon.
-7. MLflow (D46): parameters, metrics, the model with its signature, the plots, the
+7. MLflow: parameters, metrics, the model with its signature, the plots, the
    Git commit and the fingerprint of the training data.
 
 Outputs: models/lgbm_model.txt, reports/train/*.png,
@@ -59,7 +59,7 @@ def load_training(path: Path) -> pd.DataFrame:
     """Read all horizon files; text columns become categories (saves ~2 GB).
 
     Arrow keeps freed buffers for reuse; release_unused() hands them back to the
-    operating system, otherwise loading needs twice the table's size (D47).
+    operating system, otherwise loading needs twice the table's size.
     """
     table = ds.dataset(str(path), format="parquet").to_table()
     df = table.to_pandas(strings_to_categorical=True, self_destruct=True)
@@ -69,7 +69,7 @@ def load_training(path: Path) -> pd.DataFrame:
 
 
 def split_masks(df: pd.DataFrame, cfg: dict) -> dict[str, np.ndarray]:
-    """Train / validation / test by time, with gaps (D44).
+    """Train / validation / test by time, with gaps.
 
     train: target before train_end; validation: forecast time from val_start and
     target before val_end; test: forecast time from test_start. The day between
@@ -80,7 +80,7 @@ def split_masks(df: pd.DataFrame, cfg: dict) -> dict[str, np.ndarray]:
     def ts(s: str) -> pd.Timestamp:
         return pd.Timestamp(s, tz="UTC")
 
-    return {  # boolean masks, not copies (D47)
+    return {  # boolean masks, not copies (saves memory)
         "train": (tt < ts(cfg["train_end"])).to_numpy(),
         "val": ((t >= ts(cfg["val_start"])) & (tt < ts(cfg["val_end"]))).to_numpy(),
         "test": (t >= ts(cfg["test_start"])).to_numpy(),
@@ -91,7 +91,7 @@ def category_codes(params: dict) -> dict[str, dict[str, int]]:
     """Fixed integer codes for city and region, taken from params.yaml.
 
     The model receives numbers, not text, so the same codes work in training, in
-    the MLflow model (JSON input) and in the serving API (D46).
+    the MLflow model (JSON input) and in the serving API.
     """
     cities = params["data"]["cities"]
     regions = sorted({v["region"] for v in cities.values()})
@@ -102,7 +102,7 @@ def category_codes(params: dict) -> dict[str, dict[str, int]]:
 
 
 def encode_categories(df: pd.DataFrame, codes: dict) -> pd.DataFrame:
-    """Replace city and region names by their fixed codes, IN PLACE (D47).
+    """Replace city and region names by their fixed codes, IN PLACE (saves memory).
 
     The mapping is applied to the few distinct names, then spread to all rows by
     position: no per-row text and no copy of the 14 M-row table. Unknown or
@@ -120,7 +120,7 @@ def encode_categories(df: pd.DataFrame, codes: dict) -> pd.DataFrame:
 
 
 def training_label(target, current, mode: str) -> np.ndarray:
-    """What the model learns (D48): the level itself, or the change from now.
+    """What the model learns: the level itself, or the change from now.
 
     "change" = target - current pm25_24h. At short horizons the future 24-h
     average is mostly the current one, so learning the change lets the model
@@ -143,7 +143,7 @@ def to_level(pred, current, mode: str) -> np.ndarray:
 def feature_matrix(
     df: pd.DataFrame, features: list[str], mask: np.ndarray
 ) -> np.ndarray:
-    """Selected rows as one float32 array, filled column by column (D47).
+    """Selected rows as one float32 array, filled column by column.
 
     Going through df.loc[mask, features].to_numpy() would hold two extra copies
     of the training rows at once; this holds one.
@@ -334,7 +334,7 @@ def main() -> int:
         len(features),
     )
 
-    # Memory (D47): keep the small validation/test slices, turn the training rows
+    # Memory: keep the small validation/test slices, turn the training rows
     # into ONE float32 array, free the table, then let LightGBM bin the array.
     lgb_params = {**cfg["lgbm"]}
     categorical = list(codes)  # city, region
@@ -400,7 +400,7 @@ def main() -> int:
         )
         # In "change" mode a forecast needs the current value: hours without one
         # (station outages) get no forecast. Counted separately; every other
-        # forecast must be a finite number (checked by the gate, D49).
+        # forecast must be a finite number (checked by the gate).
         pred = part["model"].to_numpy()
         expected = (
             part["pm25_24h"].notna().to_numpy()
@@ -438,7 +438,7 @@ def main() -> int:
             {
                 **git_info(),
                 "training_data_md5": training_data_md5(),
-                "model_type": "LightGBM, one model with horizon as a feature (D31)",
+                "model_type": "LightGBM, one model with horizon as a feature",
                 "target_mode": mode,  # "change": add pm25_24h to the output
             }
         )

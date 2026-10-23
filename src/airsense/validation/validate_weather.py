@@ -1,6 +1,6 @@
 """Validate the historical weather (Open-Meteo archive) with Great Expectations (3.3).
 
-Same two levels as the other validation steps (design choice B, D22):
+Same two levels as the other validation steps (design choice B):
 
 CRITICAL (any failure -> exit code 1, the pipeline stops):
   - exactly the expected columns;

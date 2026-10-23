@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# AirSense pre-commit check (Stage 5, D51): lint and quick tests before every commit.
+# AirSense pre-commit check (Stage 5): lint and quick tests before every commit.
 # A commit is refused if either fails. Enable once per clone:
 #     git config core.hooksPath .githooks
 # Emergency bypass (avoid): git commit --no-verify

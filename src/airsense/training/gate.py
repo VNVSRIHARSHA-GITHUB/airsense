@@ -1,7 +1,7 @@
 """Sanity gate: a model may only be registered if it passes these checks (Stage 5).
 
-All checks use the VALIDATION set, the set models are chosen on (D44); the test set
-stays an untouched final check. Thresholds: params.yaml -> gate (D49).
+All checks use the VALIDATION set, the set models are chosen on; the test set
+stays an untouched final check. Thresholds: params.yaml -> gate.
 
   1. overall skill vs persistence >= min_skill;
   2. at every horizon, model MAE <= horizon_tolerance x persistence MAE;

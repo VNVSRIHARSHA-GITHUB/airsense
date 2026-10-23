@@ -183,13 +183,13 @@ stages:
     deps:
     - path: data/raw/live/datagov
       hash: md5
-      md5: 6750efee8a837b201b8b7d992e018c6c.dir
-      size: 6422575
-      nfiles: 87
+      md5: 6209fa7b2a5fe413e0e3e62897034d83.dir
+      size: 6654233
+      nfiles: 90
     - path: src/airsense/processing/process_live.py
       hash: md5
-      md5: 28eb892c1c7c088c414aff75108ab9db
-      size: 7473
+      md5: 32f92b64b052f4d70efd450cf70b57a7
+      size: 7468
     params:
       params.yaml:
         data.cities:
@@ -255,17 +255,17 @@ stages:
     outs:
     - path: data/interim/process_live_metrics.json
       hash: md5
-      md5: f45010625b3c9873184e51d7760f5678
+      md5: 432bade87917b4e293172af29c333bca
       size: 2912
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: cb439a944a21b6cd0203d5be864c7b87.dir
-      size: 69320
+      md5: 50063a5b0bd6e3eb3f0d1e885f6d4ccf.dir
+      size: 69472
       nfiles: 14
     - path: data/processed/live_station_hourly
       hash: md5
-      md5: b6b4d0ba84c35cb0ca25269a21a46c2f.dir
-      size: 135796
+      md5: e8bdc67dd92c04b3126c0dd3d27804fa.dir
+      size: 136996
       nfiles: 14
   validate_processed:
     cmd: python src/airsense/validation/validate_processed.py
@@ -277,8 +277,8 @@ stages:
       nfiles: 534
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: 150ae1865757e72443e10903c0170c9e.dir
-      size: 68658
+      md5: 50063a5b0bd6e3eb3f0d1e885f6d4ccf.dir
+      size: 69472
       nfiles: 14
     - path: src/airsense/validation/validate_processed.py
       hash: md5
@@ -352,15 +352,15 @@ stages:
     outs:
     - path: data/interim/processed_validation.json
       hash: md5
-      md5: dc26642eb2f9d43d23cf0a4cc8a7687e
+      md5: f5e390fcc96c81b3e90b3835f2166de5
       size: 1251
   fetch_weather:
     cmd: python src/airsense/ingestion/fetch_weather_history.py
     deps:
     - path: src/airsense/ingestion/fetch_weather_history.py
       hash: md5
-      md5: 652d479bdc435afb6007e25afc95ced4
-      size: 4681
+      md5: 774ba7dc3bbde3c56bc5f1fee800823a
+      size: 4675
     - path: src/airsense/ingestion/openmeteo_client.py
       hash: md5
       md5: c9385ada0497fc3f7d11fb3d37bb52b8
@@ -450,8 +450,8 @@ stages:
       size: 4298
     - path: src/airsense/validation/validate_weather.py
       hash: md5
-      md5: c2131f3ad4b83fb9e1eae9ead81bf840
-      size: 8273
+      md5: 8e6e5ab2479162bdd3e6f4bcb28c8da6
+      size: 8268
     params:
       params.yaml:
         data.cities:
@@ -555,8 +555,8 @@ stages:
       nfiles: 7
     - path: src/airsense/features/build_features.py
       hash: md5
-      md5: b830f24b3b7120ce178ec65f6589304a
-      size: 10091
+      md5: ef363b68e0e0fb38bba60149d36b8d36
+      size: 10047
     params:
       params.yaml:
         features.change_hours:
@@ -595,13 +595,13 @@ stages:
     deps:
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: cb439a944a21b6cd0203d5be864c7b87.dir
-      size: 69320
+      md5: 50063a5b0bd6e3eb3f0d1e885f6d4ccf.dir
+      size: 69472
       nfiles: 14
     - path: src/airsense/features/build_features.py
       hash: md5
-      md5: b830f24b3b7120ce178ec65f6589304a
-      size: 10091
+      md5: ef363b68e0e0fb38bba60149d36b8d36
+      size: 10047
     params:
       params.yaml:
         features.change_hours:
@@ -621,30 +621,30 @@ stages:
     outs:
     - path: data/features/pm_live
       hash: md5
-      md5: 46fcae11d988670f3023cecc15ac6244.dir
-      size: 176335
+      md5: 5cf6bc5e874bfb0c7170465a07cc8503.dir
+      size: 177207
       nfiles: 14
     - path: data/interim/features_live_metrics.json
       hash: md5
-      md5: 278eaad39be30da692fa39b2afc1191f
-      size: 744
+      md5: 36e1b06f00709ae95dae1cd1e4034333
+      size: 741
   feast_online:
     cmd: feast -c feature_repo apply && python 
       src/airsense/features/feast_online.py
     deps:
     - path: data/features/pm_live
       hash: md5
-      md5: 46fcae11d988670f3023cecc15ac6244.dir
-      size: 176335
+      md5: 5cf6bc5e874bfb0c7170465a07cc8503.dir
+      size: 177207
       nfiles: 14
     - path: feature_repo/feature_store.yaml
       hash: md5
-      md5: 8ac82a8d0758d429ceaa300398c8f3cd
-      size: 529
+      md5: e1bfa60bcbbd31c48d91dc13cc9037a5
+      size: 514
     - path: feature_repo/features.py
       hash: md5
-      md5: 4d5848fcf7ab1b47498d05755d8596de
-      size: 4184
+      md5: ebe627f30bbd3c6c639080138dab5a4c
+      size: 4163
     - path: src/airsense/features/feast_online.py
       hash: md5
       md5: 51a5307d4dca72ea252828a0a757cc05
@@ -670,8 +670,8 @@ stages:
     outs:
     - path: data/interim/feast_online_metrics.json
       hash: md5
-      md5: 37e8b3d70fb0735c7125071ed50c5161
-      size: 663
+      md5: 93c6705ae42fcbff8958078a12ee7da6
+      size: 662
   build_training:
     cmd: feast -c feature_repo apply && python 
       src/airsense/features/build_training.py
@@ -688,20 +688,20 @@ stages:
       nfiles: 14
     - path: feature_repo/feature_store.yaml
       hash: md5
-      md5: 8ac82a8d0758d429ceaa300398c8f3cd
-      size: 529
+      md5: e1bfa60bcbbd31c48d91dc13cc9037a5
+      size: 514
     - path: feature_repo/features.py
       hash: md5
-      md5: 4d5848fcf7ab1b47498d05755d8596de
-      size: 4184
+      md5: ebe627f30bbd3c6c639080138dab5a4c
+      size: 4163
     - path: src/airsense/features/build_features.py
       hash: md5
-      md5: b830f24b3b7120ce178ec65f6589304a
-      size: 10091
+      md5: ef363b68e0e0fb38bba60149d36b8d36
+      size: 10047
     - path: src/airsense/features/build_training.py
       hash: md5
-      md5: cd0241b1c14da83e01337978b3884d8e
-      size: 6834
+      md5: 1ecc1fbe19d6d862f322d2c17b89f050
+      size: 6812
     params:
       params.yaml:
         data.cities:
@@ -796,8 +796,8 @@ stages:
       nfiles: 24
     - path: src/airsense/training/train.py
       hash: md5
-      md5: 5ba2941ef68ab69067e2e78005f0a021
-      size: 20034
+      md5: ae9ce0dc3429c88ae427e97c0f007543
+      size: 19981
     params:
       params.yaml:
         data.cities:
@@ -907,8 +907,8 @@ stages:
       size: 24497
     - path: src/airsense/training/gate.py
       hash: md5
-      md5: aabc51bf014dc9af26748378437c86b6
-      size: 5025
+      md5: 91ab2b743ec9ebd4d6a9393a2d014421
+      size: 5013
     params:
       params.yaml:
         gate:
@@ -942,8 +942,8 @@ stages:
       size: 1460736
     - path: src/airsense/training/register.py
       hash: md5
-      md5: 8457a09c951477e75f0c381d8145cde3
-      size: 6807
+      md5: 64ef552fde0035eaea3fb7aa9b3c186f
+      size: 6802
     params:
       params.yaml:
         registry:
@@ -964,8 +964,8 @@ stages:
       nfiles: 7
     - path: src/airsense/guidance/index.py
       hash: md5
-      md5: 797937c9de6b5d561200664cbe276120
-      size: 5838
+      md5: 2e007c5a6ab2e81bc6732261cc061018
+      size: 5833
     params:
       params.yaml:
         guidance:

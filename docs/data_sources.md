@@ -9,7 +9,7 @@ This document describes every data source used by AirSense: what it contains, it
 | Source | Role in the pipeline | Access | Update frequency | Versioned with | Licence |
 |---|---|---|---|---|---|
 | CPCB historical data (Kaggle) | Training history (PM2.5) | Kaggle API (`kaggle datasets download`) | Static snapshot (2010-01-01 to 2023-03-31) | DVC (`data/raw/cpcb.dvc`) | CC BY-NC-SA 4.0 |
-| CPCB real-time feed (data.gov.in) | Live inputs and "actual" measurements for monitoring | REST API, API key in `.env` | Hourly | Collected every 30 min (cron); DVC versioning planned for Stage 9 (D30) | GODL (India) |
+| CPCB real-time feed (data.gov.in) | Live inputs and "actual" measurements for monitoring | REST API, API key in `.env` | Hourly | Collected every 30 min (cron); DVC versioning planned for Stage 9 | GODL (India) |
 | Open-Meteo weather | Weather features: archive for training, forecast for serving | REST API, no key | Hourly; archive back to 1940 (≈ 5-day delay) | Archive: DVC stage `fetch_weather` (`data/raw/weather/archive/`); forecast: fetched at serving time (Stage 6) | CC BY 4.0 |
 
 All three sources measure or model the same quantities at the same locations, so the model sees consistent inputs during training and serving (design choice 1A: "CPCB measurements throughout").
@@ -76,7 +76,7 @@ All three sources measure or model the same quantities at the same locations, so
 - **No history:** the feed returns only the current readings. Hours not collected (laptop off or asleep) cannot be retrieved later.
 - **Varying station coverage:** the number of PM2.5 stations reporting changes from hour to hour (observed 371 to 525).
 - **Data freshness:** readings lag about 30 minutes (`last_update` 16:00 IST fetched at 16:30 IST).
-- **`avg_value`, `min_value`, `max_value` are rolling statistics, not hourly values.** They are **24-hour rolling statistics**. Experiment `notebooks/03_avg_value_experiment.ipynb`: hourly values rejected by all four tests in every run; on a 28-hour gap-free stretch (22–23 Oct 2026, 156 stations) the live data alone bounds the window to 20–25.9 h and the best simulated match is 24 h (also 24 h on all 46 collected hours); live min/max show the step shapes of a rolling window. Consistent with CPCB's 24-hour PM2.5 average over the available hours (at least 16 required). The training target is computed the same way (`decisions.md` D21).
+- **`avg_value`, `min_value`, `max_value` are rolling statistics, not hourly values.** They are **24-hour rolling statistics**. Experiment `notebooks/03_avg_value_experiment.ipynb`: hourly values rejected by all four tests in every run; on a 28-hour gap-free stretch (22–23 Oct 2026, 156 stations) the live data alone bounds the window to 20–25.9 h and the best simulated match is 24 h (also 24 h on all 46 collected hours); live min/max show the step shapes of a rolling window. Consistent with CPCB's 24-hour PM2.5 average over the available hours (at least 16 required). The training target is computed the same way.
 - **Only the latest reading per station:** the feed holds each station's most recent reading; a station disappears from the feed until it publishes the next hour, so a snapshot only contains stations that have already published.
 - **Publication lag:** readings usually appear within about an hour; the **midnight (00:00 IST) reading publishes slowly** (3 stations at 01:05, 69 at 01:31, 145 at 02:05 on 21 Oct 2026). Snapshots below 200 records are logged as *partial* (warning, not failure); collecting every 30 minutes catches late publishers, and repeated readings are removed in processing (485 repeats in the first 17 snapshots; no revised values seen).
 - **Hour label:** `last_update` is assumed to mark the *end* of the 24-hour window, while the Kaggle history labels each hour by its *start*; live times are therefore shifted by −1 h (`params.yaml → live.time_offset_hours`). Not verifiable from the feed; the effect is at most 1/24 of a 24-hour window.
@@ -99,16 +99,16 @@ All three sources measure or model the same quantities at the same locations, so
 - **Locations:** the coordinates in `params.yaml` (mean location of each city's live CPCB stations), so weather is taken where PM2.5 is measured.
 
 ### Archive download (Stage 3.2–3.3)
-- **Period:** 2017-01-01 to 2023-12-31 (2017 only feeds the 72-hour look-back of the first training rows, D32).
+- **Period:** 2017-01-01 to 2023-12-31 (2017 only feeds the 72-hour look-back of the first training rows).
 - **Result:** 858,816 rows (14 cities × 7 years × 8,760 hours + the 2020 leap day) = exactly the expected count, **0 missing values**; 7 yearly Parquet files, 7 MB.
 - **Validation (Great Expectations, `validate_weather.py`):** critical checks (schema, one row per city-hour, complete hourly grid, physically possible values) passed; no plausibility warnings.
 - **Observed ranges (all cities, 2017–2023):** temperature 1.7 to 45.8 °C; humidity 3 to 100 %; precipitation up to 71.6 mm/h; wind speed up to 75.3 km/h; pressure 902 hPa (Bengaluru, ≈ 920 m altitude) to 1021 hPa; wind direction stored as 1–360° (north = 360).
 
 ### Known issues
 - **Gridded model output, not station measurements:** values represent an area around the coordinates; local effects (urban heat, wind blocked by buildings) are smoothed, and rain is the least accurate variable. Extreme peaks (cyclone winds, cloudbursts) are under-stated.
-- **Archive vs. forecast (training/serving skew, D34):** the model trains on what the weather *was* at the target hour and serves with what it is *forecast* to be. Accepted and measured in Stage 10 (forecast vs. archive error).
-- **Time grid:** weather comes at whole UTC hours, PM2.5 hours are labelled at :30 UTC. Each PM2.5 hour gets the weather at its middle (D38).
-- **Transient API errors:** occasionally an empty or cut-off response (twice in about 20 yearly requests); the client's retries absorbed both (`debug.md` #15).
+- **Archive vs. forecast (training/serving skew):** the model trains on what the weather *was* at the target hour and serves with what it is *forecast* to be. Accepted and measured in Stage 10 (forecast vs. archive error).
+- **Time grid:** weather comes at whole UTC hours, PM2.5 hours are labelled at :30 UTC. Each PM2.5 hour gets the weather at its middle.
+- **Transient API errors:** occasionally an empty or cut-off response (twice in about 20 yearly requests); the client's retries absorbed both.
 
 ---
 
@@ -144,11 +144,11 @@ Kanpur and Chandigarh have only 2 live stations each; their live coverage will b
 | 5 | **Values capped at 1000 µg/m³** | Extreme peaks (e.g. Diwali) are underestimated | Rare (0.003%); flagged |
 | 6 | **Station composition changes between 2023 and 2026:** Delhi had 40 stations in the historical data but 57 in the live feed | The city average changes because different sensors are averaged, not because air quality changed — this appears as drift | Monitored; retraining on newly collected live data |
 | 7 | **3.5-year gap** between the end of history (March 2023) and live operation (October 2026) | Real changes since 2023 appear as data or concept drift | Drift detection and retraining (Stage 10) |
-| 8 | **Live values are 24-hour rolling averages** (resolved) | Hourly training values would not match live inputs | Training target = 24-hour average computed like CPCB's (D21); exact window to re-check |
+| 8 | **Live values are 24-hour rolling averages** (resolved) | Hourly training values would not match live inputs | Training target = 24-hour average computed like CPCB's; window confirmed as 24 h |
 | 9 | **Laptop-based live collection** | Hours when the laptop is off are permanently missing (e.g. 02:05–18:24 IST on 21 Oct 2026) | Accepted for a course project; gaps handled in cleaning; freshness monitored |
 | 10 | **Single-station hours** (Chandigarh, at times Kanpur) | The city value rests on one sensor | Live-station count checked in processed-data validation (warning) |
-| 11 | **COVID lockdown kept in training** (late March – May 2020, ≈ 4% of training rows) | Abnormally low pollution for reasons that will not recur; slightly widens the drift reference | Documented on purpose (D32); excluding it would be a one-line filter |
-| 12 | **Unequal training rows per city:** Pune has 19.8% of hours since 2018 without a value (station outages lasting weeks); cities whose history starts after January 2018 have fewer rows | The model sees less of these cities, so their forecasts may be weaker | No imputation (D40); per-city error breakdown in Stage 4 |
+| 11 | **COVID lockdown kept in training** (late March – May 2020, ≈ 4% of training rows) | Abnormally low pollution for reasons that will not recur; slightly widens the drift reference | Documented on purpose; excluding it would be a one-line filter |
+| 12 | **Unequal training rows per city:** Pune has 19.8% of hours since 2018 without a value (station outages lasting weeks); cities whose history starts after January 2018 have fewer rows | The model sees less of these cities, so their forecasts may be weaker | No imputation; per-city error breakdown in Stage 4 |
 | 13 | **Reanalysis weather smooths extremes** | Weather-driven peaks are learned from muted inputs | Documented; serving uses forecasts with the same definitions |
 
 ---
@@ -175,7 +175,7 @@ All outputs are Parquet (partitioned by city) or JSON, produced by the DVC pipel
 | `data/raw/weather/archive/` | `fetch_weather_history.py` | Hourly archive weather per city, 2017–2023 (one file per year) |
 | `data/interim/weather_validation.json` | `validate_weather.py` | Critical and warning results; observed range of each variable |
 | `data/features/pm_history/` | `build_features.py history` | PM2.5 features per city-hour (2010–2023): current level, lags, changes, 72-h mean and max |
-| `data/features/weather_history/` | `build_features.py history` | Weather features per city-hour, relabelled to the PM2.5 hour they describe (D38) |
+| `data/features/weather_history/` | `build_features.py history` | Weather features per city-hour, relabelled to the PM2.5 hour they describe |
 | `data/features/pm_live/` | `build_features.py live` | The same PM2.5 features from the live feed (for serving) |
 | `feature_repo/` | Feast (`feast apply`) | Feature definitions: entity `city`, views `pm_history`, `weather_history`, `pm_live` |
 | `data/training/h01.parquet … h24.parquet` | `build_training.py` (Feast point-in-time join) | The training table: one row per (city, hour, horizon) |
@@ -183,7 +183,7 @@ All outputs are Parquet (partitioned by city) or JSON, produced by the DVC pipel
 
 **Training table:** 14,322,291 rows × 43 columns, Jan 2018 – Mar 2023 (≈ 5.25 years), 24 horizons; built from 619,547 city-hours, of which 596,864 (96.3%) have a target. Full list of columns: `docs/features.md`.
 
-**Storage format:** the feature and training tables store times labelled as UTC in microseconds (`datetime64[us, UTC]`), unlike the naive-UTC tables of Stage 2, because Feast's DuckDB offline store needs them (D41). Files are written deterministically (sorted rows, fixed file names), so identical inputs give byte-identical outputs (D43).
+**Storage format:** the feature and training tables store times labelled as UTC in microseconds (`datetime64[us, UTC]`), unlike the naive-UTC tables of Stage 2, because Feast's DuckDB offline store needs them. Files are written deterministically (sorted rows, fixed file names), so identical inputs give byte-identical outputs.
 
 ---
 

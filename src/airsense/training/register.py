@@ -1,4 +1,4 @@
-"""Register the trained model in the MLflow Model Registry (Stage 5, D50).
+"""Register the trained model in the MLflow Model Registry (Stage 5).
 
 Champion / challenger:
   1. the run's model (it passed the gate) becomes a new version of the registered

@@ -1,4 +1,4 @@
-"""Feast feature definitions for AirSense (Stage 3.5, D36, D41).
+"""Feast feature definitions for AirSense (Stage 3.5).
 
 One entity (city) and three feature views over the tables written by
 src/airsense/features/build_features.py:
@@ -14,7 +14,7 @@ difference. Lag and window columns are generated from params.yaml, the same
 settings build_features.py uses.
 
 Source paths point at the Parquet files below each folder; DuckDB (the offline
-store, D41) reads the city=<name> sub-folders back as the city column.
+store) reads the city=<name> sub-folders back as the city column.
 
 Serving-side weather (forecast for the next 24 hours) is not stored here: it is
 keyed by target hour, not by city alone, and is fetched at request time (Stage 6).
@@ -98,7 +98,7 @@ weather_history = FeatureView(
     schema=[Field(name=c, dtype=Float64) for c in WEATHER_COLUMNS],
     source=source("weather_history"),
     online=False,
-    description="Archive weather relabelled to the PM2.5 hour (D38) (training)",
+    description="Archive weather relabelled to the PM2.5 hour (training)",
 )
 pm_live = FeatureView(
     name="pm_live",

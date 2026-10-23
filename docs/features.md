@@ -1,10 +1,10 @@
 # AirSense: Feature List
 
-The columns of the training table (`data/training/h01.parquet … h24.parquet`, 43 columns) and how each is computed. This list feeds the HLD (feature section) and the model card. Design decisions: D31 (horizon as a feature), D35 and D37 (feature rules), D38 (time alignment), D39 (calendar), D40 (missing values), D41 (Feast).
+The columns of the training table (`data/training/h01.parquet … h24.parquet`, 43 columns) and how each is computed. This list feeds the HLD (feature section) and the model card.
 
 **One row = one city, one forecast time *t*, one horizon *h*.** The model predicts the 24-hour average PM2.5 at *t + h*.
 
-**Rule for every feature:** it must be computable at serving time from live data. PM2.5 features therefore use only the city's 24-hour average series (`pm25_24h`), because the live feed has no hourly values (D35).
+**Rule for every feature:** it must be computable at serving time from live data. PM2.5 features therefore use only the city's 24-hour average series (`pm25_24h`), because the live feed has no hourly values.
 
 ---
 
@@ -51,7 +51,7 @@ The columns of the training table (`data/training/h01.parquet … h24.parquet`, 
 
 ### Weather at the target hour *t + h* (9)
 
-The same 9 variables with the suffix `_target`. Training: archive weather (what happened). Serving: the forecast for that hour (D34: a documented training/serving skew, monitored in Stage 10).
+The same 9 variables with the suffix `_target`. Training: archive weather (what happened). Serving: the forecast for that hour (a documented training/serving skew, monitored in Stage 10).
 
 ### Calendar of the target hour *t + h*, in Indian time (5)
 
@@ -71,12 +71,12 @@ The same 9 variables with the suffix `_target`. Training: archive weather (what 
 |---|---|---|
 | Hourly grid | `complete_hourly_grid()` | One row per city per hour, so a lag of *k* means *k* hours, even across gaps |
 | PM2.5 features | `pm_features()` | Only values at or before *t* (leakage test in `tests/unit/test_build_features.py`) |
-| Weather features | `weather_features()` | Relabelled −30 min to the PM2.5 hour (D38) |
+| Weather features | `weather_features()` | Relabelled −30 min to the PM2.5 hour |
 | Calendar | `calendar_features()` | Computed when the training set is built and at serving time; not stored |
-| Training rows | `build_training.py` | Feast point-in-time join for *t*; the same result looked up at *t + h* for target and target weather; rows without a target dropped (D40) |
+| Training rows | `build_training.py` | Feast point-in-time join for *t*; the same result looked up at *t + h* for target and target weather; rows without a target dropped (no imputation) |
 
 All lags and windows come from `params.yaml → features`; the newest features need 72 hours of history (`min_history_hours()`), which a unit test confirms gives the same values as the full history.
 
 ## 4. Missing values
 
-Missing feature values (station outages, the start of each city's history) are left empty; LightGBM handles them natively (D40). Rows without a target are not used.
+Missing feature values (station outages, the start of each city's history) are left empty; LightGBM handles them natively. Rows without a target are not used.

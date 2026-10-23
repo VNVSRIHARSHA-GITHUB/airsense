@@ -42,7 +42,7 @@ processing:
   driver_memory: "6g"         # memory for Spark (leaves ~8 GB for everything else)
   shuffle_partitions: 24      # parallel tasks when grouping (default 200 is too many for this data)
   stuck_run_hours: 24         # >= this many identical consecutive hours = stuck sensor
-  avg_window_hours: 24        # live avg_value = 24 h rolling mean (D21: confirmed on 46 h and on a 28 h continuous stretch)
+  avg_window_hours: 24        # live avg_value = 24 h rolling mean (confirmed on 46 h and on a 28 h continuous stretch)
   min_valid_hours: 16         # CPCB minimum data rule for the 24-hour average
 
 live:
@@ -50,8 +50,8 @@ live:
                           # each hour by its START (Kaggle "From Date"), so subtract 1 h
 
 weather:
-  archive:                     # Open-Meteo archive (reanalysis) for training (D33)
-    start_date: "2017-01-01"   # one year before training starts (D32): room for the 72-h lags
+  archive:                     # Open-Meteo archive (reanalysis) for training
+    start_date: "2017-01-01"   # one year before training starts: room for the 72-h lags
     end_date: "2023-12-31"     # end of the CPCB history's last year
     pause_s: 65                # seconds between yearly requests: a year of 14 cities counts
                                # as hundreds of API calls (free tier: 600 per minute)
@@ -63,28 +63,28 @@ weather:
       wind_speed_10m: [0, 100]       # km/h (cyclones can exceed this on the coast)
       precipitation: [0, 100]        # mm in one hour
 
-features:                        # Stage 3 feature engineering (D37, D38)
-  train_start: "2018-01-01"      # first training row (D32); earlier hours only feed the lags
+features:                        # Stage 3 feature engineering
+  train_start: "2018-01-01"      # first training row; earlier hours only feed the lags
   lags_hours: [1, 3, 6, 12, 24, 48, 72]   # pm25_24h this many hours before t
   change_hours: [1, 6, 24]       # pm25_24h(t) - pm25_24h(t - k)
-  rolling_hours: 72              # longest look-back (D37 option B): mean and max over t-71 .. t
+  rolling_hours: 72              # longest look-back: mean and max over t-71 .. t
   rolling_min_hours: 24          # rolling value only if at least this many hours are present
   rain_window_hours: 24          # rain over the last 24 h
-  weather_offset_minutes: 30     # PM2.5 hour hh:30-hh+1:30 UTC gets the weather at hh+1:00 (D38)
-  local_timezone: "Asia/Kolkata" # calendar features in Indian time (D39)
+  weather_offset_minutes: 30     # PM2.5 hour hh:30-hh+1:30 UTC gets the weather at hh+1:00 (its middle)
+  local_timezone: "Asia/Kolkata" # calendar features in Indian time
   festival_window_days: 2        # Diwali flag = Diwali date +/- 2 days (local dates)
   diwali_dates: ["2017-10-19", "2018-11-07", "2019-10-27", "2020-11-14", "2021-11-04",
                  "2022-10-24", "2023-11-12", "2024-10-31", "2025-10-20", "2026-11-08"]
   materialize_days: 7           # online store: load live features of the last 7 days (newest per city wins)
 
-train:                           # Stage 4 (D44-D46)
+train:                           # Stage 4
   split:                         # by time; the day between an end and the next start is left out
     train_end: "2022-01-01"      # train: targets before this
     val_start: "2022-01-02"      # validation: forecasts from here ...
     val_end: "2022-10-01"        # ... with targets before this
     test_start: "2022-10-02"     # test: Oct 2022 - Mar 2023 (winter, Diwali 2022)
   lgbm:                          # LightGBM settings (tried in DVC experiments, logged in MLflow)
-    objective: regression_l1     # L1 loss = mean absolute error, our main metric (D48)
+    objective: regression_l1     # L1 loss = mean absolute error, our main metric
     learning_rate: 0.05
     num_leaves: 63
     min_data_in_leaf: 200
@@ -101,11 +101,11 @@ train:                           # Stage 4 (D44-D46)
   num_boost_round: 2000          # upper limit; early stopping picks the real number
   early_stopping_rounds: 50      # stop when validation error has not improved for 50 trees
   train_fraction: 1.0            # share of training rows used (lower it, e.g. 0.5, if memory is tight)
-  target_mode: change            # "level" = predict PM2.5; "change" = predict the change from now (D48)
+  target_mode: change            # "level" = predict PM2.5; "change" = predict the change from now
   shap_sample: 5000              # test rows explained with SHAP
   mlflow_experiment: airsense-pm25
 
-gate:                            # Stage 5 sanity gate, checked on VALIDATION (D49)
+gate:                            # Stage 5 sanity gate, checked on VALIDATION
   min_skill: 0.05                # overall: at least 5% lower MAE than persistence
   horizon_tolerance: 1.05        # every horizon: model MAE <= 1.05 x persistence MAE
   min_city_skill: -0.05          # every city: at most 5% worse than persistence
@@ -113,7 +113,7 @@ gate:                            # Stage 5 sanity gate, checked on VALIDATION (D
   prediction_range: [0, 1000]    # forecasts must be finite and in the possible range (ug/m3)
   max_no_forecast_share: 0.01    # "change" mode: at most 1% of hours without a forecast (no current value)
 
-registry:                        # MLflow Model Registry, champion / challenger (D50)
+registry:                        # MLflow Model Registry, champion / challenger
   model_name: airsense-pm25
   min_improvement: 0.01          # challenger must beat the re-scored champion's validation MAE by >= 1%
 

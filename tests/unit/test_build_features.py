@@ -172,7 +172,7 @@ def test_recent_window_gives_the_same_features_as_the_full_history():
 
 
 def test_rewriting_identical_data_gives_identical_files(tmp_path):
-    """Fixed file names + identical bytes: DVC sees an unchanged folder (D43)."""
+    """Fixed file names + identical bytes: DVC sees an unchanged folder."""
     import hashlib
 
     df = pd.concat([pm_table([1, 2], "Delhi"), pm_table([3, 4], "Pune")])

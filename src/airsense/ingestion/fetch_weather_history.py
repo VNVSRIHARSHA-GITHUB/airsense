@@ -6,7 +6,7 @@ year per request (all cities together), and saves one Parquet file per year:
   data/raw/weather/archive/<year>.parquet   one row per (city, UTC hour)
   data/interim/fetch_weather_metrics.json   rows, missing values, timing
 
-Times are stored as naive UTC, like every other table in the project (D15).
+Times are stored as naive UTC, like every other table in the project.
 Open-Meteo counts a long multi-city request as many API calls (free tier: 600 per
 minute), so the script pauses between years (params.yaml -> weather.archive.pause_s).
 """

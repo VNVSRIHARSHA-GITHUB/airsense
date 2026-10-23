@@ -217,7 +217,7 @@ stages:
           cache: false
 
   guidance_index:
-    # Embeds the health-guidance texts and stores them in local Qdrant (D53).
+    # Embeds the health-guidance texts and stores them in local Qdrant.
     # Stop the backend first: local Qdrant allows only one process on the folder.
     cmd: python src/airsense/guidance/index.py
     deps:

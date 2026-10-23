@@ -1,15 +1,15 @@
-"""Build the training table through Feast (Stage 3.6, D31, D42).
+"""Build the training table through Feast (Stage 3.6).
 
 1. Entity rows: every (city, hour) of the PM2.5 history from features.train_start on.
 2. Feast point-in-time join (training_features service, DuckDB offline store): the
    PM2.5 features and the weather "now" for each row, as they were at that hour.
-3. Horizon expansion (one model with the horizon as a feature, D31): each row is
+3. Horizon expansion (one model with the horizon as a feature): each row is
    repeated for h = 1 .. forecast.horizon_hours, with
      - target          = pm25_24h at t + h,
-     - <weather>_target = weather at t + h (archive here, forecast at serving, D34),
-     - calendar of t + h in Indian time (D39),
+     - <weather>_target = weather at t + h (archive here, forecast at serving),
+     - calendar of t + h in Indian time,
      - region (static, from params.yaml).
-   Rows whose target is missing are dropped (no imputation, D40).
+   Rows whose target is missing are dropped (no imputation).
 
 The weather at t + h comes from the same Feast result: every t + h is itself an
 entity row, so its weather was already retrieved point-in-time.
@@ -94,7 +94,7 @@ def compact(df: pd.DataFrame) -> pd.DataFrame:
         elif kind in (np.int64, np.int32):
             out[c] = out[c].astype(np.int16)  # horizon, hour, weekday, month, flags
         elif isinstance(kind, pd.DatetimeTZDtype):
-            out[c] = out[c].astype("datetime64[us, UTC]")  # same format as D41
+            out[c] = out[c].astype("datetime64[us, UTC]")  # same format as the feature tables
     return out
 
 
@@ -126,7 +126,7 @@ def main() -> int:
         .to_df()
         .rename(columns={"event_timestamp": "time_utc"})
         # DuckDB returns rows in no fixed order; sorting makes identical inputs give
-        # byte-identical files, so DVC stores one copy and later stages skip (D43).
+        # byte-identical files, so DVC stores one copy and later stages skip.
         .sort_values(["city", "time_utc"], ignore_index=True)
     )
     join_s = time.perf_counter() - start
