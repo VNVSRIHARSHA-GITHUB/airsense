@@ -405,7 +405,7 @@ async function refreshAll() {
     await loadCities();
     showBanner("");
   } catch (e) {
-    showBanner(`The forecast service at ${API} cannot be reached (${e.message}). Check that the backend is running, then use Refresh.`);
+    showBanner(`Could not load the city list from ${API}: ${e.message}. If the backend is running, use Refresh in a moment.`);
     return;
   }
   await loadForecast();

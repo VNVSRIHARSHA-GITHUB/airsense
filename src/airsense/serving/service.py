@@ -57,6 +57,22 @@ class ModelServerError(RuntimeError):
     """The model server could not be reached or gave no usable answer."""
 
 
+class FeatureStoreBusy(RuntimeError):
+    """The online store could not be read, e.g. while it is being refreshed."""
+
+
+def integer_columns(model_uri: str) -> set[str]:
+    """Names of the inputs the registered signature declares as integers."""
+    import mlflow
+
+    try:
+        inputs = mlflow.models.get_model_info(model_uri).signature.inputs.to_dict()
+    except Exception as exc:  # noqa: BLE001 - without it the server still validates
+        log.warning("Could not read the model signature: %s", exc)
+        return set()
+    return {c["name"] for c in inputs if c.get("type") in ("integer", "long")}
+
+
 def _value(v) -> float | None:
     """A feature value as float, or None if missing (None or NaN)."""
     return None if v is None or not np.isfinite(float(v)) else float(v)
@@ -136,6 +152,9 @@ class ForecastService:
         self.codes = mlflow.artifacts.load_dict(
             f"runs:/{mv.run_id}/category_codes.json"
         )
+        # Columns the model's input schema stores as integers: they cannot be empty,
+        # otherwise the model server rejects the request (400).
+        self.int_cols = integer_columns(f"models:/{name}/{mv.version}")
 
         self._weather: pd.DataFrame | None = None
         self._weather_at = 0.0
@@ -150,13 +169,28 @@ class ForecastService:
 
     # ---------- inputs ----------
 
-    def live_features(self, city: str) -> tuple[dict, pd.Timestamp | None]:
-        """Newest online PM2.5 features of a city and the hour they describe."""
+    def _read_online(self, city: str) -> dict:
         with self._store_lock:
             service = self.store.get_feature_service("serving_features")
-            d = self.store.get_online_features(
+            return self.store.get_online_features(
                 features=service, entity_rows=[{"city": city}], full_feature_names=False
             ).to_dict(include_event_timestamps=True)
+
+    def live_features(self, city: str) -> tuple[dict, pd.Timestamp | None]:
+        """Newest online PM2.5 features of a city and the hour they describe.
+
+        `dvc repro feast_online` rewrites the online store from another process;
+        a read at that moment can fail, so it is retried once after a short pause.
+        """
+        try:
+            d = self._read_online(city)
+        except Exception as first:  # noqa: BLE001 - retried once, then reported
+            log.warning("Online read for %s failed, retrying: %s", city, first)
+            time.sleep(0.5)
+            try:
+                d = self._read_online(city)
+            except Exception as exc:
+                raise FeatureStoreBusy(f"online store read failed: {exc}") from exc
         feats = {
             k: v[0] for k, v in d.items() if not k.endswith("__ts") and k != "city"
         }
@@ -295,6 +329,15 @@ class ForecastService:
                 "available": False,
                 "reason": f"weather forecast missing for {missing} of "
                 f"{len(rows) + 1} hours needed",
+            }
+
+        gaps = [c for c in self.int_cols if c in rows and rows[c].isna().any()]
+        if gaps:
+            return {
+                **out,
+                "available": False,
+                "reason": "input values missing that the model cannot do without: "
+                + ", ".join(sorted(gaps)),
             }
 
         start = time.perf_counter()

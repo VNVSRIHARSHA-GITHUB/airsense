@@ -8,12 +8,12 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from main import create_app
 
-from airsense.serving.service import ModelServerError
+from airsense.serving.service import FeatureStoreBusy, ModelServerError
 
 
 class FakeService:
     def __init__(self):
-        self.cities = {"Delhi": {"region": "North"}}
+        self.cities = {"Delhi": {"region": "North"}, "Pune": {"region": "West"}}
         self.model = {"name": "airsense-pm25", "version": "1", "target_mode": "change"}
 
     def health(self):
@@ -33,6 +33,8 @@ class FakeService:
     def forecast(self, city, group="general"):
         if group == "outdoor_workers":
             raise ModelServerError("connection refused")
+        if city == "Pune":
+            raise FeatureStoreBusy("online store read failed")
         if group == "sensitive":
             return {
                 "city": city,
@@ -141,3 +143,8 @@ def test_backend_failures_are_503_not_500():
 def test_pipeline_endpoint():
     body = client.get("/pipeline").json()
     assert body["stages"][0]["status"] == "up to date"
+
+
+def test_feature_store_refresh_is_503_not_500():
+    r = client.get("/forecast/Pune")
+    assert r.status_code == 503 and "being refreshed" in r.json()["detail"]

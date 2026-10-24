@@ -5,7 +5,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from airsense.serving.service import WEATHER_COLS, ForecastService, ModelServerError
+from airsense.serving.service import (
+    WEATHER_COLS,
+    FeatureStoreBusy,
+    ForecastService,
+    ModelServerError,
+)
 
 T = pd.Timestamp("2026-10-23 10:30", tz="UTC")
 FEATURES = ["pm25_24h", "pm25_lag_1h", "horizon", "temperature_2m_target", "city"]
@@ -47,6 +52,7 @@ def make_service(feats, t=T, change=1.0, fail=False):
     s.codes = {"city": {"Delhi": 0}, "region": {"North": 0}}
     s.model = {"name": "m", "version": "1", "target_mode": "change"}
     s.features = FEATURES
+    s.int_cols = set()
     s.model_server = FakeModelServer(change, fail)
     s.booster = FakeBooster()
     s.live_features = lambda city: (feats, t)
@@ -175,3 +181,43 @@ def test_model_server_error_keeps_mlflow_reason(monkeypatch):
     monkeypatch.setattr(httpx, "post", lambda *a, **k: Answer())
     with pytest.raises(ModelServerError, match="relative_humidity_2m_now"):
         ModelServerClient("http://x").predict(pd.DataFrame({"a": [1.0]}))
+
+
+def test_empty_integer_input_gives_no_forecast():
+    """One empty value in an integer column would make the model server answer 400."""
+    s = make_service({"pm25_24h": 100.0})
+    full, _ = s.weather_table()
+    holey = full.copy()
+    holey.loc[holey.index[35], "temperature_2m"] = float("nan")  # one target hour
+    s.weather_table = lambda: (holey, None)
+    s.int_cols = {"temperature_2m_target"}
+    out = s.forecast("Delhi")
+    assert out["available"] is False and "temperature_2m_target" in out["reason"]
+    s.int_cols = set()  # a decimal column may be empty: forecast is made
+    assert s.forecast("Delhi")["available"] is True
+
+
+def test_online_read_is_retried_once_then_reported(monkeypatch):
+    from airsense.serving import service
+
+    monkeypatch.setattr(service.time, "sleep", lambda s: None)
+    s = ForecastService.__new__(ForecastService)
+    answer = {"pm25_24h": [100.0], "pm25_24h__ts": [1792750000], "city": ["Delhi"]}
+    calls = []
+
+    def flaky(city):
+        calls.append(city)
+        if len(calls) == 1:
+            raise IndexError("tuple index out of range")  # store being rewritten
+        return answer
+
+    s._read_online = flaky
+    feats, t = s.live_features("Delhi")
+    assert feats == {"pm25_24h": 100.0} and t is not None and len(calls) == 2
+
+    def broken(city):
+        raise IndexError("tuple index out of range")
+
+    s._read_online = broken
+    with pytest.raises(FeatureStoreBusy):
+        s.live_features("Delhi")

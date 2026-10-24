@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from airsense.serving.service import ModelServerError
+from airsense.serving.service import FeatureStoreBusy, ModelServerError
 
 log = logging.getLogger("airsense.api")
 
@@ -142,7 +142,10 @@ def create_app(service=None, pipeline=None) -> FastAPI:
 
     @app.get("/cities", response_model=list[CityStatus])
     def cities():
-        return svc().cities_overview()
+        try:
+            return svc().cities_overview()
+        except FeatureStoreBusy as exc:
+            raise unavailable("Live data (being refreshed)", exc) from None
 
     @app.get("/forecast/{city}", response_model=Forecast)
     def forecast(city: str, group: Group = "general"):
@@ -152,6 +155,8 @@ def create_app(service=None, pipeline=None) -> FastAPI:
             return svc().forecast(city, group)
         except ModelServerError as exc:
             raise unavailable("Model server", exc) from None
+        except FeatureStoreBusy as exc:
+            raise unavailable("Live data (being refreshed)", exc) from None
 
     @app.get("/model")
     def model() -> dict:
