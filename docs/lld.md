@@ -312,7 +312,10 @@ returns as empty (`None`) becomes NaN and is listed in `warnings`.
 registered input schema (MLflow signature) stores humidity and cloud cover as
 integers, which cannot be empty: the model server rejects such rows with 400. So a
 forecast is made only when weather is available for all 25 hours (now + 24); this
-is why serving falls back to a saved forecast instead of sending empty weather. All
+is why serving falls back to a saved forecast instead of sending empty weather.
+More generally, at startup the backend reads from the registered model which inputs
+are integers, and makes no forecast if any of them is empty for any hour (the
+answer names them); decimal inputs may be empty, as in training. All
 columns are sent as float64 numbers.
 
 **Why training and serving cannot drift apart.**
@@ -348,7 +351,10 @@ per folder.
 several requests at once (`/cities` and `/forecast`). Feast's SQLite online store
 shares one database connection between threads, and two simultaneous reads broke
 it (`IndexError`), so online reads take turns behind a lock; a read takes about
-0.5 ms, so the wait is not noticeable.
+0.5 ms, so the wait is not noticeable. The online store is also rewritten by
+another process (`dvc repro feast_online`), which a lock cannot prevent: a failed
+read is retried once after 0.5 s, and a second failure becomes a 503 ("Live data
+(being refreshed) unavailable") instead of an error.
 
 **A new champion** (promoted by the `register` stage) is picked up by restarting the
 model server and then the backend. Until both are restarted, `/health` shows
@@ -375,6 +381,8 @@ one loaded). In Stage 9 the restart becomes part of the automated pipeline.
 | Guidance index locked (index rebuild running) or embedding model missing | forecast made with `guidance: null` and a warning; `/guidance` → 503 | `forecast`, `main.py` |
 | Feature store unreadable | `/health` reports `feature_store: false` | `health` |
 | `dvc status` fails or times out | `/pipeline` shows every step as `unknown` and the error | `PipelineStatus.build` |
+| Online store being rewritten (`dvc repro feast_online`) | read retried once; then 503 "Live data (being refreshed) unavailable, try again later" for `/forecast` and `/cities` | `live_features` → `main.py` |
+| An integer input (per the model signature) empty for any hour | 200, `available: false`, "input values missing that the model cannot do without: …" | `ForecastService.forecast` |
 
 Design rule: the user always gets either a forecast or a clear reason. Problems with
 optional parts (weather, guidance) reduce quality and are reported in `warnings`;
@@ -445,7 +453,7 @@ hours) and the small embedding model; the model server holds one booster.
 | `tests/unit/test_service.py` | `ForecastService.forecast` with fake inputs: normal forecast (current + change), stale / missing / NaN current value, city unknown to the model, missing history reported, negative forecast clipped, model server down raises the error the API turns into 503, guidance failure keeps the forecast |
 | `tests/unit/test_guidance.py` | all 6 categories × 3 groups parsed with sources; malformed file rejected; search returns the right category and group (local Qdrant in a temporary folder, deterministic test embedder) |
 | `tests/unit/test_api.py` | every endpoint and response schema; 404 for an unknown city; 422 for invalid values; `available: false` carries a reason; dependency failures give 503, not 500 |
-| `tests/unit/test_service.py` (weather) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept |
+| `tests/unit/test_service.py` (weather, robustness) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept; an empty integer input gives no forecast; a failed online read is retried once, then reported |
 | `tests/unit/test_pipeline.py` | steps, reports and graph from a small `dvc.yaml`; status and reasons from `dvc status` output; throughput from different report layouts; gaps in the collection; newest log problems; caching; a failed `dvc status` |
 | `docs/ui_test_checklist.md` | 28 manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails) |
 
