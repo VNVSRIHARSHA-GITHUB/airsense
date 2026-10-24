@@ -10,6 +10,7 @@ Endpoints (the API contract, documented in the LLD):
     GET /forecast/{city}     24 hourly forecasts + AQI, explanation, health guidance
     GET /model               the champion model and its metrics
     GET /guidance            advice for an AQI category and a user group
+    GET /pipeline            pipeline status for the operators' console (read-only)
 Interactive documentation: http://127.0.0.1:8000/docs
 """
 
@@ -92,9 +93,9 @@ class CityStatus(BaseModel):
     age_hours: float | None
 
 
-def create_app(service=None) -> FastAPI:
-    """Build the app; tests pass a fake service, normal runs create the real one."""
-    state = {"service": service}
+def create_app(service=None, pipeline=None) -> FastAPI:
+    """Build the app; tests pass fakes, normal runs create the real services."""
+    state = {"service": service, "pipeline": pipeline}
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -102,6 +103,19 @@ def create_app(service=None) -> FastAPI:
             from airsense.serving.service import ForecastService
 
             state["service"] = ForecastService()
+            try:  # load the embedding model now, not on the first visitor's request
+                state["service"].guidance_index()
+            except Exception as exc:  # noqa: BLE001 - forecasts work without guidance
+                log.warning("Guidance index not loaded at startup: %s", exc)
+        if state["pipeline"] is None:
+            from airsense.serving.pipeline import PipelineStatus
+
+            cfg = state["service"].params["serving"]
+            state["pipeline"] = PipelineStatus(
+                cache_seconds=cfg["pipeline_cache_seconds"],
+                dvc_timeout_s=cfg["dvc_status_timeout_seconds"],
+                model_info=state["service"].model,
+            )
         yield
 
     app = FastAPI(
@@ -149,6 +163,10 @@ def create_app(service=None) -> FastAPI:
             return svc().guidance(category, group)
         except Exception as exc:  # noqa: BLE001 - index locked or model missing
             raise unavailable("Guidance index", exc) from None
+
+    @app.get("/pipeline")
+    def pipeline() -> dict:
+        return state["pipeline"].get()
 
     return app
 

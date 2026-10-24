@@ -92,7 +92,12 @@ class FakeService:
         ]
 
 
-client = TestClient(create_app(FakeService()))
+class FakePipeline:
+    def get(self):
+        return {"stages": [{"name": "train", "status": "up to date"}], "edges": []}
+
+
+client = TestClient(create_app(FakeService(), FakePipeline()))
 
 
 def test_forecast_returns_24_hours_and_schema():
@@ -131,3 +136,8 @@ def test_backend_failures_are_503_not_500():
     assert r.status_code == 503 and "Model server" in r.json()["detail"]
     r = client.get("/guidance", params={"category": "Poor", "group": "outdoor_workers"})
     assert r.status_code == 503
+
+
+def test_pipeline_endpoint():
+    body = client.get("/pipeline").json()
+    assert body["stages"][0]["status"] == "up to date"

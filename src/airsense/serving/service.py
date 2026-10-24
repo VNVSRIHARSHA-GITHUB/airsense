@@ -80,10 +80,14 @@ class ModelServerClient:
             r = httpx.post(
                 f"{self.url}/invocations", json=payload, timeout=self.timeout_s
             )
-            r.raise_for_status()
-            return np.asarray(r.json()["predictions"], dtype=float)
-        except (httpx.HTTPError, KeyError, ValueError) as exc:
+        except httpx.HTTPError as exc:
             raise ModelServerError(f"model server at {self.url}: {exc}") from exc
+        if r.status_code != 200:  # keep MLflow's explanation, e.g. a schema mismatch
+            raise ModelServerError(f"model server HTTP {r.status_code}: {r.text[:400]}")
+        try:
+            return np.asarray(r.json()["predictions"], dtype=float)
+        except (KeyError, ValueError) as exc:
+            raise ModelServerError(f"model server gave no predictions: {exc}") from exc
 
     def ping(self) -> bool:
         try:
@@ -136,8 +140,11 @@ class ForecastService:
         self._weather: pd.DataFrame | None = None
         self._weather_at = 0.0
         self._weather_failed_at = -1e9
-        self._weather_problem: str | None = None
         self._weather_lock = threading.Lock()
+        self._weather_note: str | None = None
+        # Feast's SQLite online store shares one connection between threads; two
+        # reads at the same moment broke it (IndexError), so reads take turns.
+        self._store_lock = threading.Lock()
         self._guidance = None  # opened on first use (loads the embedding model)
         self._guidance_lock = threading.Lock()  # local Qdrant: open only once
 
@@ -145,10 +152,11 @@ class ForecastService:
 
     def live_features(self, city: str) -> tuple[dict, pd.Timestamp | None]:
         """Newest online PM2.5 features of a city and the hour they describe."""
-        service = self.store.get_feature_service("serving_features")
-        d = self.store.get_online_features(
-            features=service, entity_rows=[{"city": city}], full_feature_names=False
-        ).to_dict(include_event_timestamps=True)
+        with self._store_lock:
+            service = self.store.get_feature_service("serving_features")
+            d = self.store.get_online_features(
+                features=service, entity_rows=[{"city": city}], full_feature_names=False
+            ).to_dict(include_event_timestamps=True)
         feats = {
             k: v[0] for k, v in d.items() if not k.endswith("__ts") and k != "city"
         }
@@ -157,35 +165,55 @@ class ForecastService:
         return feats, t
 
     def weather_table(self) -> tuple[pd.DataFrame | None, str | None]:
-        """Weather features for all cities, cached; (None, reason) if unavailable."""
+        """Weather features for all cities and a note when they are not live.
+
+        Order: the cached live forecast (30 min); a new Open-Meteo call (short
+        timeout, one attempt); after a failure, the newest saved forecast
+        snapshot (each successful call is saved, and one fetch covers 3 days);
+        otherwise (None, reason). Failures are retried after 5 minutes.
+        """
         from airsense.ingestion.openmeteo_client import fetch_weather, save_snapshot
 
         with self._weather_lock:
             now = time.monotonic()
-            if self._weather is not None and (
-                now - self._weather_at < self.cfg["weather_cache_minutes"] * 60
-            ):
-                return self._weather, None
+            fresh = now - self._weather_at < self.cfg["weather_cache_minutes"] * 60
+            if self._weather is not None and fresh:
+                return self._weather, self._weather_note
             if now - self._weather_failed_at < self.cfg["weather_retry_minutes"] * 60:
-                return self._weather, self._weather_problem  # do not retry every call
+                return self._weather, self._weather_note  # do not retry every call
             try:
                 raw = fetch_weather(
                     {c: (v["lat"], v["lon"]) for c, v in self.cities.items()},
                     mode="forecast",
                     past_days=self.cfg["weather_past_days"],
                     forecast_days=self.cfg["weather_forecast_days"],
+                    timeout_s=self.cfg["weather_timeout_seconds"],
+                    retries=1,
                 )
-                save_snapshot(
-                    raw
-                )  # kept for the forecast-vs-archive check (Stage 10 check)
+                save_snapshot(raw)  # also the input of the Stage 10 weather check
                 self._weather = weather_features(raw, self.params["features"])
-                self._weather_at = time.monotonic()
-                return self._weather, None
-            except Exception as exc:  # noqa: BLE001 - serve without weather, with a warning
-                log.warning("Weather forecast unavailable: %s", exc)
+                self._weather_at, self._weather_note = time.monotonic(), None
+            except Exception as exc:  # noqa: BLE001 - fall back to a saved forecast
+                log.warning("Live weather forecast unavailable: %s", exc)
                 self._weather_failed_at = now
-                self._weather_problem = f"weather forecast unavailable ({exc})"
-                return self._weather, self._weather_problem
+                self._weather, self._weather_note = self.saved_weather()
+            return self._weather, self._weather_note
+
+    def saved_weather(self) -> tuple[pd.DataFrame | None, str]:
+        """The newest saved Open-Meteo forecast, as weather features."""
+        from airsense.ingestion.openmeteo_client import OUT_DIR
+
+        files = sorted(OUT_DIR.glob("*/*.csv"))
+        if not files:
+            return None, "weather forecast unavailable (no saved forecast either)"
+        raw = pd.read_csv(files[-1])
+        raw["time_utc"] = pd.to_datetime(raw["time_utc"], utc=True)
+        fetched = pd.Timestamp(raw.pop("fetched_at_utc").iloc[0]).tz_convert(IST)
+        note = (
+            "live weather forecast unavailable; using the forecast fetched "
+            f"{fetched:%a %d %b %H:%M} IST"
+        )
+        return weather_features(raw, self.params["features"]), note
 
     def guidance_index(self):
         with self._guidance_lock:  # two first requests must not both open Qdrant
@@ -237,9 +265,9 @@ class ForecastService:
             return {**out, "available": False, "reason": reason}
 
         rain_col = f"rain_{self.params['features']['rain_window_hours']}h"
-        weather, problem = self.weather_table()
-        if problem:
-            out["warnings"].append(problem)
+        weather, note = self.weather_table()
+        if note:
+            out["warnings"].append(note)
         city_weather = (
             weather[weather["city"] == city]
             if weather is not None
@@ -260,9 +288,14 @@ class ForecastService:
         if empty:
             out["warnings"].append(f"PM2.5 history missing for: {', '.join(empty)}")
         if missing:
-            out["warnings"].append(
-                f"weather missing for {missing} of {len(rows) + 1} hours (now + {len(rows)} ahead)"
-            )
+            # The model was trained with complete weather, and its input schema
+            # stores humidity and cloud cover as integers, which cannot be empty.
+            return {
+                **out,
+                "available": False,
+                "reason": f"weather forecast missing for {missing} of "
+                f"{len(rows) + 1} hours needed",
+            }
 
         start = time.perf_counter()
         raw = self.model_server.predict(rows)  # ModelServerError -> HTTP 503

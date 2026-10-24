@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AirSense — air quality forecast</title>
+  <meta name="description" content="24-hour PM2.5 and AQI forecast with health advice for 14 Indian cities">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&display=swap">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <a class="wordmark" href="index.html">AirSense</a>
+      <p class="tagline">Air quality for the next 24 hours in 14 Indian cities</p>
+    </div>
+    <nav class="topnav" aria-label="Pages">
+      <a href="index.html" aria-current="page">Forecast</a>
+      <a href="pipeline.html">Pipeline console</a>
+    </nav>
+  </header>
+
+  <main>
+    <div id="banner" class="banner" role="alert" hidden></div>
+
+    <p class="intro">Pick a city to see its 24-hour forecast and what to do about it.</p>
+
+    <section class="phone-controls" aria-label="Choose city and advice">
+      <label class="field">City
+        <select id="city-select"></select>
+      </label>
+      <label class="field">Advice for
+        <select id="group-select">
+          <option value="general">General public</option>
+          <option value="sensitive">Children, elderly, heart or lung conditions</option>
+          <option value="outdoor_workers">Outdoor workers and exercise</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="controls" aria-label="Settings">
+      <fieldset class="groups">
+        <legend>Advice for</legend>
+        <label><input type="radio" name="group" value="general" checked><span>General public</span></label>
+        <label><input type="radio" name="group" value="sensitive"><span>Children, elderly, heart or lung conditions</span></label>
+        <label><input type="radio" name="group" value="outdoor_workers"><span>Outdoor workers and exercise</span></label>
+      </fieldset>
+      <div class="freshness">
+        <span id="asof">Loading…</span>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+    </section>
+
+    <section class="tiles-section" aria-labelledby="cities-h">
+      <h2 id="cities-h" class="section-h">Choose a city</h2>
+      <div id="cities" class="cities" role="list"></div>
+    </section>
+
+    <section id="detail" class="detail" aria-live="polite" hidden></section>
+
+    <section id="overview" class="overview" aria-labelledby="overview-h" hidden>
+      <h2 id="overview-h" class="section-h">Across India right now</h2>
+      <p id="overview-text"></p>
+      <div id="overview-bar" class="catbar" role="img"></div>
+      <ol id="overview-list" class="ranked"></ol>
+    </section>
+
+    <details class="help">
+      <summary>How to read this page</summary>
+      <div class="help-body">
+        <p><strong>PM2.5</strong> are fine particles in the air, small enough to reach deep into the lungs. Values are the average over the last 24 hours, in micrograms per cubic metre (µg/m³), as used by India's official Air Quality Index (AQI).</p>
+        <table class="aqi-table">
+          <thead><tr><th>Category</th><th>PM2.5 (24-hour average)</th><th>Possible health impact</th></tr></thead>
+          <tbody id="aqi-rows"></tbody>
+        </table>
+        <p><strong>The forecast</strong> shows the expected 24-hour average for each of the next 24 hours. It changes slowly because each new hour replaces only one of the 24 hours being averaged.</p>
+        <p><strong>Why this forecast</strong> lists the inputs that pushed the forecast up or down the most, in µg/m³.</p>
+        <p><strong>Notes</strong> appear when some input data was missing; the forecast is still made, but may be less accurate. If no forecast is shown, the latest measurement is too old or missing.</p>
+      </div>
+    </details>
+  </main>
+
+  <footer class="footer">
+    <p id="model-line"></p>
+    <p>Measurements: Central Pollution Control Board (CPCB), via data.gov.in. Weather: <a href="https://open-meteo.com/">Open-Meteo.com</a> (CC BY 4.0). Forecasts are estimates; follow official health advisories.</p>
+  </footer>
+
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/common.js"></script>
+  <script src="assets/forecast.js"></script>
+</body>
+</html>

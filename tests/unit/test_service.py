@@ -118,3 +118,60 @@ def test_guidance_failure_keeps_the_forecast():
     out = s.forecast("Delhi")
     assert out["available"] and out["guidance"] is None
     assert out["warnings"][0].startswith("guidance unavailable")
+
+
+def test_incomplete_weather_gives_no_forecast():
+    s = make_service({"pm25_24h": 100.0})
+    full, _ = s.weather_table()
+    s.weather_table = lambda: (full.iloc[:35], "live weather forecast unavailable; ...")
+    out = s.forecast("Delhi")
+    assert out["available"] is False and "weather forecast missing" in out["reason"]
+    assert out["warnings"] == ["live weather forecast unavailable; ..."]
+
+
+def test_saved_forecast_is_used_when_live_weather_fails(tmp_path, monkeypatch):
+    import airsense.ingestion.openmeteo_client as om
+
+    day = tmp_path / "2026-10-23"
+    day.mkdir()
+    hours = pd.date_range("2026-10-22 00:00", periods=96, freq="h", tz="UTC")
+    snap = pd.DataFrame({"city": "Delhi", "time_utc": hours})
+    for c in om.HOURLY_VARS:
+        snap[c] = 50.0
+    snap["fetched_at_utc"] = "2026-10-23T12:30:00+00:00"
+    snap.to_csv(day / "1230.csv", index=False)
+    monkeypatch.setattr(om, "OUT_DIR", tmp_path)
+
+    def offline(*args, **kwargs):
+        raise RuntimeError("Open-Meteo request failed")
+
+    monkeypatch.setattr(om, "fetch_weather", offline)
+    s = make_service({"pm25_24h": 100.0})
+    del s.weather_table  # use the real method
+    s._weather, s._weather_at, s._weather_failed_at = None, 0.0, -1e9
+    s._weather_lock = __import__("threading").Lock()
+    s._weather_note = None
+    s.cfg.update(
+        weather_cache_minutes=30,
+        weather_retry_minutes=5,
+        weather_past_days=2,
+        weather_forecast_days=3,
+        weather_timeout_seconds=10,
+    )
+    s.params["features"].update(weather_offset_minutes=30)
+    table, note = s.weather_table()
+    assert len(table) == 96 and "fetched Fri 23 Oct 18:00 IST" in note
+
+
+def test_model_server_error_keeps_mlflow_reason(monkeypatch):
+    import httpx
+
+    from airsense.serving.service import ModelServerClient
+
+    class Answer:
+        status_code = 400
+        text = '{"message": "Failed to convert column relative_humidity_2m_now"}'
+
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: Answer())
+    with pytest.raises(ModelServerError, match="relative_humidity_2m_now"):
+        ModelServerClient("http://x").predict(pd.DataFrame({"a": [1.0]}))

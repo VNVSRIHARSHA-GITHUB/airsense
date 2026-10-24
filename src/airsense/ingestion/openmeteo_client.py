@@ -7,6 +7,7 @@ Two endpoints:
 Both return the same tidy table: one row per (city, UTC hour) with one
 column per weather variable.
 """
+
 import logging
 import time
 from datetime import UTC, datetime
@@ -23,33 +24,37 @@ OUT_DIR = PROJECT_ROOT / "data" / "raw" / "live" / "openmeteo"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 HOURLY_VARS = [
-    "temperature_2m",        # deg C at 2 m
+    "temperature_2m",  # deg C at 2 m
     "relative_humidity_2m",  # %
-    "precipitation",         # mm in the hour (rain washes PM2.5 out)
-    "wind_speed_10m",        # km/h (wind disperses pollution)
-    "wind_direction_10m",    # degrees (where pollution blows from)
-    "surface_pressure",      # hPa (high pressure -> stagnant air)
-    "cloud_cover",           # %
+    "precipitation",  # mm in the hour (rain washes PM2.5 out)
+    "wind_speed_10m",  # km/h (wind disperses pollution)
+    "wind_direction_10m",  # degrees (where pollution blows from)
+    "surface_pressure",  # hPa (high pressure -> stagnant air)
+    "cloud_cover",  # %
 ]
 HEADERS = {"User-Agent": "AirSense-collector/1.0 (DA3408 course project)"}
 TIMEOUT_S = 60
 MAX_RETRIES = 3
 
 
-def _get(url: str, params: dict) -> dict | list:
-    """GET with retries; returns the parsed JSON body."""
-    for attempt in range(1, MAX_RETRIES + 1):
+def _get(
+    url: str, params: dict, timeout_s: float = TIMEOUT_S, retries: int = MAX_RETRIES
+) -> dict | list:
+    """GET with retries; returns the parsed JSON body.
+
+    The defaults suit the training download (patient); the API passes a short
+    timeout and a single attempt so a user never waits minutes for weather.
+    """
+    for attempt in range(1, retries + 1):
         try:
-            resp = requests.get(url, params=params, headers=HEADERS,
-                                timeout=TIMEOUT_S)
+            resp = requests.get(url, params=params, headers=HEADERS, timeout=timeout_s)
             if resp.status_code != 200:
                 # Open-Meteo explains bad requests in the body ("reason").
                 raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
             return resp.json()
         except (requests.RequestException, RuntimeError, ValueError) as exc:
-            log.warning("Open-Meteo attempt %d/%d failed: %s",
-                        attempt, MAX_RETRIES, exc)
-            if attempt == MAX_RETRIES:
+            log.warning("Open-Meteo attempt %d/%d failed: %s", attempt, retries, exc)
+            if attempt == retries:
                 raise RuntimeError("Open-Meteo request failed") from None
             time.sleep(10 * attempt)
 
@@ -62,12 +67,16 @@ def _to_frame(item: dict, city: str) -> pd.DataFrame:
     return df
 
 
-def fetch_weather(locations: dict[str, tuple[float, float]],
-                  mode: str = "forecast",
-                  start_date: str | None = None,
-                  end_date: str | None = None,
-                  past_days: int = 2,
-                  forecast_days: int = 2) -> pd.DataFrame:
+def fetch_weather(
+    locations: dict[str, tuple[float, float]],
+    mode: str = "forecast",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    past_days: int = 2,
+    forecast_days: int = 2,
+    timeout_s: float = TIMEOUT_S,
+    retries: int = MAX_RETRIES,
+) -> pd.DataFrame:
     """Fetch hourly weather for several cities in one request.
 
     locations: {"Chennai": (13.08, 80.27), ...}
@@ -92,11 +101,12 @@ def fetch_weather(locations: dict[str, tuple[float, float]],
     else:
         raise ValueError(f"unknown mode: {mode}")
 
-    body = _get(url, params)
+    body = _get(url, params, timeout_s=timeout_s, retries=retries)
     # One location -> a JSON object; several -> a list in the same order.
     items = body if isinstance(body, list) else [body]
-    return pd.concat([_to_frame(item, city) for item, city in zip(items, names)],
-                     ignore_index=True)
+    return pd.concat(
+        [_to_frame(item, city) for item, city in zip(items, names)], ignore_index=True
+    )
 
 
 def save_snapshot(df: pd.DataFrame, out_dir: Path = OUT_DIR) -> Path:

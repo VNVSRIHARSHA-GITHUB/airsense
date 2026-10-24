@@ -121,9 +121,12 @@ serving:                         # Stage 6 backend
   model_server_url: http://127.0.0.1:5002   # `mlflow models serve` of the champion
   weather_cache_minutes: 30      # one Open-Meteo forecast call per 30 min for all cities
   weather_retry_minutes: 5       # after a failed call, wait before trying again
+  weather_timeout_seconds: 10    # one Open-Meteo attempt per request, then the saved forecast
   weather_past_days: 2           # past hours needed for "now" weather and 24 h rain
   weather_forecast_days: 3       # covers t+24 h for every city
   top_factors: 4                 # factors shown in the explanation
+  pipeline_cache_seconds: 60     # console data rebuilt at most once a minute
+  dvc_status_timeout_seconds: 60 # dvc status for the console gives up after this
 
 guidance:                        # Stage 6 health guidance search
   docs_dir: guidance_docs
