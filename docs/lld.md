@@ -3,7 +3,8 @@
 This document describes how the AirSense serving system is built: its components,
 the API contract, the request flow, the model input contract, error handling,
 configuration and tests. It covers the code in `model_server/`, `backend/`,
-`src/airsense/serving/` and `src/airsense/guidance/`.
+`src/airsense/serving/`, `src/airsense/guidance/` and the web pages in `frontend/`
+(Forecast page and Pipeline console; their use is described in `docs/user_manual.md`).
 
 The data pipeline that produces the model and the features (ingestion, Spark
 processing, Feast, training, gate, registry) is described in
@@ -46,6 +47,8 @@ flowchart LR
 | Row builder | `src/airsense/serving/assemble.py` | Builds the 24 input rows exactly as training did | — | — |
 | Explanations | `src/airsense/serving/explain.py` | Turns SHAP values into the top factors in plain words | — | — |
 | Guidance index | `src/airsense/guidance/index.py`, `guidance_docs/` | Builds (DVC stage `guidance_index`) and searches the health-advice collection | `guidance_docs/*.md` | `data/qdrant/`, `data/interim/guidance_index.json` |
+| Pipeline status | `src/airsense/serving/pipeline.py` | Read-only summary for the operators' console: steps and graph, `dvc status`, step reports, throughput, gate, registry, collection health, recent log problems; cached 60 s | `dvc.yaml`, `data/interim/*.json`, snapshot folder, `logs/*.log` | — |
+| Web pages | `frontend/` (HTML, CSS, JavaScript, Chart.js included) | Forecast page for users, Pipeline console for operators; call the API over HTTP only | the API | — |
 
 **Why two serving processes.** The model server is MLflow's standard way to serve a
 registered model; it knows nothing about cities, weather or users. The backend owns
@@ -75,6 +78,7 @@ documented interactively at `/docs` (OpenAPI, generated from the schemas in
 | `GET /forecast/{city}` | `city` (path, exact name, e.g. `Delhi`); `group` (query: `general` · `sensitive` · `outdoor_workers`, default `general`) | 200: forecast, or `available: false` with a reason | 404 unknown city · 422 invalid `group` · 503 model server unavailable |
 | `GET /model` | — | 200: champion model and its metrics | — |
 | `GET /guidance` | `category` (query, required: `Good` · `Satisfactory` · `Moderate` · `Poor` · `Very Poor` · `Severe`); `group` (as above) | 200: best-matching advice | 422 invalid value · 503 guidance index unavailable |
+| `GET /pipeline` | — | 200: pipeline status for the operators' console | — (a failed `dvc status` is reported in the body) |
 
 ### 2.2 Status codes
 
@@ -159,6 +163,13 @@ When no forecast is possible:
 - **`/cities`** — list of `{city, region, pm25_24h, aqi_category, age_hours}`; values are `null` for a city without data.
 - **`/model`** — `{name, version, run_id, target_mode, val_mae, test_mae, test_skill, trained_at, training_data_md5}` from the MLflow run of the champion.
 - **`/guidance`** — list (one item) of the guidance object described above.
+- **`/pipeline`** — `{generated_at_utc, dvc_status_error, stages[], edges[], throughput[], gate, registry, champion, collection, recent_problems[]}`:
+  - `stages[]`: `{name, cmd, status, reasons[], last_run_utc, report_file, report}`, where `status` is `up to date`, `changed` (with the changed inputs as reasons), `runs every time` or `unknown` (if `dvc status` failed, e.g. while a pipeline run holds DVC's lock);
+  - `edges[]`: `[from, to]` pairs, derived from `dvc.yaml` (an output of one step is an input of the other);
+  - `throughput[]`: `{stage, rows, seconds, rows_per_second}` from each step's report;
+  - `collection`: last snapshot time and age, snapshots in the last 24 h (48 expected), gaps longer than 45 min, snapshot times;
+  - `recent_problems[]`: the newest WARNING/ERROR lines of `logs/*.log`.
+  The result is cached for `serving.pipeline_cache_seconds` (60), so console refreshes do not run `dvc status` each time.
 
 ---
 
@@ -219,10 +230,15 @@ because the SQLite online store does not apply it on reads.
 - The response goes through the **same `weather_features()`** as training (wind
   direction as sin/cos, 24-hour rain sum, relabelling by −30 min so that weather at
   11:00 UTC describes the PM2.5 hour labelled 10:30).
-- The table is cached for `serving.weather_cache_minutes` (30). After a failed call
-  the service waits `serving.weather_retry_minutes` (5) before trying again, so a
-  provider outage costs one slow request (the client's 3 attempts, about 30 s), not
-  one per request.
+- The table is cached for `serving.weather_cache_minutes` (30). A request makes **one
+  attempt with a 10 s timeout** (`serving.weather_timeout_seconds`); the patient
+  settings of the training download (60 s, 3 attempts) would keep a user waiting
+  for minutes.
+- If the call fails, the service uses the **newest saved forecast snapshot** (below)
+  and adds the note "live weather forecast unavailable; using the forecast fetched
+  …". One fetch covers three days, so a snapshot from earlier the same day still
+  covers the next 24 hours. The live call is retried after
+  `serving.weather_retry_minutes` (5).
 - Every successful fetch is saved to `data/raw/live/openmeteo/<date>/<HHMM>.csv`.
   These snapshots are the input for the forecast-versus-archive weather comparison
   in Stage 10 (training used archive weather, serving uses forecasts).
@@ -288,10 +304,16 @@ startup (`booster.feature_name()`); the backend never hard-codes them.
 | Calendar of the target hour (Indian time) | `hour`, `day_of_week`, `month`, `is_weekend`, `is_festival` | `calendar_features()` |
 | Location | `city`, `region` | fixed integer codes from the run's `category_codes.json` |
 
-**Missing values.** Training kept gaps as NaN (no imputation), and LightGBM learned
-how to treat them. Serving does the same: a feature Feast returns as empty (`None`)
-and any hour without weather become NaN. They are listed in `warnings` so the user
-can see what was missing. All columns are sent as float64.
+**Missing values.** Training kept gaps in the PM2.5 history as NaN (no imputation),
+and LightGBM learned how to treat them. Serving does the same: a feature Feast
+returns as empty (`None`) becomes NaN and is listed in `warnings`.
+
+**Weather must be complete.** The training weather had no gaps, and the model's
+registered input schema (MLflow signature) stores humidity and cloud cover as
+integers, which cannot be empty: the model server rejects such rows with 400. So a
+forecast is made only when weather is available for all 25 hours (now + 24); this
+is why serving falls back to a saved forecast instead of sending empty weather. All
+columns are sent as float64 numbers.
 
 **Why training and serving cannot drift apart.**
 - The same functions build the inputs: `weather_features()`, `calendar_features()`
@@ -318,8 +340,15 @@ At startup (`lifespan` in `main.py`) the backend creates one `ForecastService`, 
    Registry, reads its run (metrics, `target_mode`, training-data checksum) and loads
    that version's booster and `category_codes.json`.
 
-The embedding model and Qdrant are opened on the first guidance request (behind a
-lock, because local Qdrant allows a single open client per folder).
+The embedding model and Qdrant are opened at startup (a failure there only
+disables guidance), behind a lock because local Qdrant allows a single open client
+per folder.
+
+**Concurrency.** FastAPI runs each request in a worker thread, and a web page sends
+several requests at once (`/cities` and `/forecast`). Feast's SQLite online store
+shares one database connection between threads, and two simultaneous reads broke
+it (`IndexError`), so online reads take turns behind a lock; a read takes about
+0.5 ms, so the wait is not noticeable.
 
 **A new champion** (promoted by the `register` stage) is picked up by restarting the
 model server and then the backend. Until both are restarted, `/health` shows
@@ -338,13 +367,14 @@ one loaded). In Stage 9 the restart becomes part of the automated pipeline.
 | Current value older than 4 h (collection stopped, online store not refreshed) | 200, `available: false`, "latest PM2.5 value is X h old (limit 4 h)" | same |
 | City configured but not known to the model | 200, `available: false`, "city not known to the model" | same |
 | Some PM2.5 history empty (collection gap) | forecast made; warning "PM2.5 history missing for: …" | same |
-| Weather provider down or slow | forecast made with the last cached weather, or without weather (NaN); warning "weather forecast unavailable (…)"; retried after 5 min | `weather_table` |
-| Some weather hours missing | forecast made; warning "weather missing for N of 25 hours" | same |
-| Model server down, slow (> 10 s) or answering nonsense | 503 "Model server unavailable, try again later"; cause logged | `ModelServerClient` → `main.py` |
+| Weather provider down or slow (> 10 s) | forecast made with the newest saved weather forecast; note "live weather forecast unavailable; using the forecast fetched …"; live call retried after 5 min | `weather_table`, `saved_weather` |
+| Weather missing for any of the 25 hours (no usable saved forecast either) | 200, `available: false`, "weather forecast missing for N of 25 hours needed" | `ForecastService.forecast` |
+| Model server down, slow (> 10 s) or rejecting the input | 503 "Model server unavailable, try again later"; the cause, including MLflow's explanation (e.g. a schema mismatch), is logged | `ModelServerClient` → `main.py` |
 | Model returns a non-finite value | 200, `available: false`, "model gave no valid forecast" | `ForecastService.forecast` |
 | Forecast below 0 | values set to 0; warning | same |
 | Guidance index locked (index rebuild running) or embedding model missing | forecast made with `guidance: null` and a warning; `/guidance` → 503 | `forecast`, `main.py` |
 | Feature store unreadable | `/health` reports `feature_store: false` | `health` |
+| `dvc status` fails or times out | `/pipeline` shows every step as `unknown` and the error | `PipelineStatus.build` |
 
 Design rule: the user always gets either a forecast or a clear reason. Problems with
 optional parts (weather, guidance) reduce quality and are reported in `warnings`;
@@ -359,6 +389,9 @@ only the model server is essential, and its absence is a 503 that a client can r
 | `serving.model_server_url` | `http://127.0.0.1:5002` | where the backend finds the model server (5001 is used by another local service) |
 | `serving.weather_cache_minutes` | 30 | one Open-Meteo call per 30 min for all cities |
 | `serving.weather_retry_minutes` | 5 | wait after a failed weather call |
+| `serving.weather_timeout_seconds` | 10 | one Open-Meteo attempt per request, then the saved forecast |
+| `serving.pipeline_cache_seconds` | 60 | console data rebuilt at most once a minute |
+| `serving.dvc_status_timeout_seconds` | 60 | `dvc status` for the console gives up after this |
 | `serving.weather_past_days` / `weather_forecast_days` | 2 / 3 | hours needed for "now", 24-hour rain and *t* + 24 |
 | `serving.top_factors` | 4 | factors in the explanation |
 | `guidance.docs_dir` | `guidance_docs` | source texts |
@@ -374,7 +407,12 @@ dvc repro guidance_index                        # once, and after editing guidan
 dvc repro feast_online                          # refresh live features (Stage 9: Airflow)
 bash model_server/serve.sh                      # terminal 1: model server on port 5002
 uvicorn main:app --app-dir backend --port 8000  # terminal 2: backend on port 8000
+python -m http.server 8080 --directory frontend # terminal 3: web pages on port 8080
 ```
+
+The web pages find the API through `frontend/assets/config.js`
+(`http://localhost:8000` locally; in the Stage 8 containers nginx forwards `/api`
+to the backend).
 
 `MODEL_SERVER_PORT` overrides the model server's port; `serving.model_server_url`
 must then be changed to match. Rebuilding the guidance index requires the backend to
@@ -407,6 +445,9 @@ hours) and the small embedding model; the model server holds one booster.
 | `tests/unit/test_service.py` | `ForecastService.forecast` with fake inputs: normal forecast (current + change), stale / missing / NaN current value, city unknown to the model, missing history reported, negative forecast clipped, model server down raises the error the API turns into 503, guidance failure keeps the forecast |
 | `tests/unit/test_guidance.py` | all 6 categories × 3 groups parsed with sources; malformed file rejected; search returns the right category and group (local Qdrant in a temporary folder, deterministic test embedder) |
 | `tests/unit/test_api.py` | every endpoint and response schema; 404 for an unknown city; 422 for invalid values; `available: false` carries a reason; dependency failures give 503, not 500 |
+| `tests/unit/test_service.py` (weather) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept |
+| `tests/unit/test_pipeline.py` | steps, reports and graph from a small `dvc.yaml`; status and reasons from `dvc status` output; throughput from different report layouts; gaps in the collection; newest log problems; caching; a failed `dvc status` |
+| `docs/ui_test_checklist.md` | 28 manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails) |
 
 The tests need no network, no running servers and no model download; they run in the
 pre-commit hook with the rest of the quick suite.
