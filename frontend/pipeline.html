@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AirSense — pipeline console</title>
+  <meta name="description" content="Status of the AirSense data and model pipeline">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&display=swap">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="console">
+  <header class="topbar">
+    <div class="brand">
+      <a class="wordmark" href="index.html">AirSense</a>
+      <p class="tagline">Pipeline console: is the data arriving, is every step up to date, which model is live</p>
+    </div>
+    <nav class="topnav" aria-label="Pages">
+      <a href="index.html">Forecast</a>
+      <a href="pipeline.html" aria-current="page">Pipeline console</a>
+    </nav>
+  </header>
+
+  <main>
+    <div id="banner" class="banner" role="alert" hidden></div>
+    <div class="freshness console-fresh">
+      <span id="asof">Loading…</span>
+      <button id="refresh" type="button">Refresh</button>
+    </div>
+
+    <section class="status-row" id="status-row" aria-label="Summary"></section>
+
+    <section class="panel" aria-labelledby="graph-h">
+      <h2 id="graph-h" class="section-h">Pipeline steps</h2>
+      <p class="hint">Each box is one step of the DVC pipeline; arrows show which step feeds which. Select a step to see its latest report.</p>
+      <div class="legend" id="legend"></div>
+      <p class="hint phone-only">On a phone, swipe the graph sideways to see every step.</p>
+      <div class="dag-wrap"><svg id="dag" role="img" aria-label="Pipeline graph"></svg></div>
+      <div id="stage-detail" class="stage-detail" aria-live="polite"></div>
+    </section>
+
+    <div class="two-col">
+      <section class="panel" aria-labelledby="live-h">
+        <h2 id="live-h" class="section-h">Live data collection (last 24 hours)</h2>
+        <p id="live-text" class="hint"></p>
+        <div id="live-strip" class="slots" role="img"></div>
+        <div id="live-axis" class="slots-axis" aria-hidden="true"></div>
+        <ul id="gaps" class="plain"></ul>
+      </section>
+
+      <section class="panel" aria-labelledby="model-h">
+        <h2 id="model-h" class="section-h">Live model</h2>
+        <div id="model"></div>
+      </section>
+    </div>
+
+    <section class="panel" aria-labelledby="speed-h">
+      <h2 id="speed-h" class="section-h">Processing speed</h2>
+      <p class="hint">Rows handled per second by each step, from its latest run (log scale).</p>
+      <div class="chart-box short"><canvas id="speed" role="img" aria-label="Throughput per pipeline step"></canvas></div>
+    </section>
+
+    <section class="panel" aria-labelledby="stages-h">
+      <h2 id="stages-h" class="section-h">All steps</h2>
+      <div class="table-wrap"><table class="data" id="stages"></table></div>
+    </section>
+
+    <section class="panel" aria-labelledby="problems-h">
+      <h2 id="problems-h" class="section-h">Recent warnings and errors</h2>
+      <div id="problems"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Read-only view built from the pipeline's own records (DVC, step reports, MLflow Model Registry, collector logs). Refreshes every minute.</p>
+  </footer>
+
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="assets/config.js"></script>
+  <script src="assets/common.js"></script>
+  <script src="assets/pipeline.js"></script>
+</body>
+</html>

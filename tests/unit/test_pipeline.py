@@ -133,6 +133,7 @@ def test_collection_health_finds_gaps():
     assert h["snapshots_24h"] == 5 and h["expected_24h"] == 48
     assert h["minutes_since_last"] == 20
     assert [g["minutes"] for g in h["gaps_24h"]] == [90]
+    assert len(h["times_24h"]) == 5 and h["times_24h"][0] == t0.isoformat()
     assert collection_health([], now=t0)["last_snapshot_utc"] is None
 
 

@@ -425,10 +425,14 @@ function fillAqiTable() {
   );
 }
 
-function setGroup(group) {
+function setGroupControls(group) {
   state.group = group;
   document.getElementById("group-select").value = group; // keep phone and desktop controls in step
   document.querySelectorAll('input[name="group"]').forEach((r) => (r.checked = r.value === group));
+}
+
+function setGroup(group) {
+  setGroupControls(group);
   loadForecast();
 }
 
@@ -438,6 +442,8 @@ document.querySelectorAll('input[name="group"]').forEach((r) =>
 document.getElementById("group-select").addEventListener("change", (e) => setGroup(e.target.value));
 document.getElementById("city-select").addEventListener("change", (e) => selectCity(e.target.value));
 document.getElementById("refresh").addEventListener("click", refreshAll);
+// Browsers may restore form controls after a reload; start from a known state.
+setGroupControls("general");
 fillAqiTable();
 refreshAll();
 setInterval(refreshAll, REFRESH_MS);

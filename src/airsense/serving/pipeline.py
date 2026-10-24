@@ -226,6 +226,7 @@ def collection_health(
         "snapshots_24h": len(day),
         "expected_24h": 24 * 60 // every_min,
         "gaps_24h": gaps,
+        "times_24h": [t.isoformat() for t in day],  # for the console's timeline
         "total_snapshots": len(times),
     }
 

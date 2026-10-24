@@ -28,10 +28,10 @@
 
     <section class="phone-controls" aria-label="Choose city and advice">
       <label class="field">City
-        <select id="city-select"></select>
+        <select id="city-select" autocomplete="off"></select>
       </label>
       <label class="field">Advice for
-        <select id="group-select">
+        <select id="group-select" autocomplete="off">
           <option value="general">General public</option>
           <option value="sensitive">Children, elderly, heart or lung conditions</option>
           <option value="outdoor_workers">Outdoor workers and exercise</option>
@@ -42,9 +42,9 @@
     <section class="controls" aria-label="Settings">
       <fieldset class="groups">
         <legend>Advice for</legend>
-        <label><input type="radio" name="group" value="general" checked><span>General public</span></label>
-        <label><input type="radio" name="group" value="sensitive"><span>Children, elderly, heart or lung conditions</span></label>
-        <label><input type="radio" name="group" value="outdoor_workers"><span>Outdoor workers and exercise</span></label>
+        <label><input type="radio" name="group" value="general" checked autocomplete="off"><span>General public</span></label>
+        <label><input type="radio" name="group" value="sensitive" autocomplete="off"><span>Children, elderly, heart or lung conditions</span></label>
+        <label><input type="radio" name="group" value="outdoor_workers" autocomplete="off"><span>Outdoor workers and exercise</span></label>
       </fieldset>
       <div class="freshness">
         <span id="asof">Loading…</span>
