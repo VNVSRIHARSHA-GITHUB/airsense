@@ -146,7 +146,9 @@ def test_saved_forecast_is_used_when_live_weather_fails(tmp_path, monkeypatch):
         snap[c] = 50.0
     snap["fetched_at_utc"] = "2026-10-23T12:30:00+00:00"
     snap.to_csv(day / "1230.csv", index=False)
-    monkeypatch.setattr(om, "OUT_DIR", tmp_path)
+    from airsense.serving import service
+
+    monkeypatch.setattr(service, "SNAPSHOT_DIR", tmp_path)
 
     def offline(*args, **kwargs):
         raise RuntimeError("Open-Meteo request failed")

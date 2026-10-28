@@ -29,7 +29,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yaml
-from feast import FeatureStore
+
+from airsense.common.settings import feature_store
 
 log = logging.getLogger(__name__)
 
@@ -82,7 +83,7 @@ def main() -> int:
     days = params["features"]["materialize_days"]
     max_age = params["validation"]["processed"]["max_live_age_hours"]
 
-    store = FeatureStore(repo_path=str(REPO))
+    store = feature_store()  # Redis address from REDIS_CONNECTION, else the yaml
     end = datetime.now(UTC)
     t0 = time.perf_counter()
     store.materialize(

@@ -20,13 +20,12 @@ import threading
 import time
 import warnings
 from datetime import UTC, datetime
-from pathlib import Path
 
 import httpx
 import numpy as np
 import pandas as pd
-import yaml
 
+from airsense.common.settings import PROJECT_ROOT, feature_store, load_params
 from airsense.features.build_features import weather_features
 from airsense.serving.assemble import aqi_name, build_rows
 from airsense.serving.explain import top_factors
@@ -34,7 +33,7 @@ from airsense.training.train import to_level
 
 log = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SNAPSHOT_DIR = PROJECT_ROOT / "data" / "raw" / "live" / "openmeteo"
 IST = "Asia/Kolkata"
 WEATHER_COLS = [
     "temperature_2m",
@@ -46,11 +45,6 @@ WEATHER_COLS = [
     "wind_dir_sin",
     "wind_dir_cos",
 ]
-
-
-def load_params() -> dict:
-    with open(PROJECT_ROOT / "params.yaml") as f:
-        return yaml.safe_load(f)
 
 
 class ModelServerError(RuntimeError):
@@ -119,17 +113,19 @@ class ForecastService:
         os.environ.setdefault("MLFLOW_DISABLE_AGENT_HINT", "1")
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         import mlflow
-        from feast import FeatureStore
         from mlflow.tracking import MlflowClient
 
         self.params = params or load_params()
         self.cities = self.params["data"]["cities"]
         self.cfg = self.params["serving"]
-        self.store = FeatureStore(repo_path=str(PROJECT_ROOT / "feature_repo"))
+        self.store = feature_store()
         self.model_server = ModelServerClient(self.cfg["model_server_url"])
 
         # The champion version this backend explains with (same as the model server).
-        mlflow.set_tracking_uri(f"sqlite:///{PROJECT_ROOT / 'mlflow.db'}")
+        mlflow.set_tracking_uri(
+            os.environ.get("MLFLOW_TRACKING_URI")
+            or f"sqlite:///{PROJECT_ROOT / 'mlflow.db'}"
+        )
         self.mlflow_client = MlflowClient()
         name = self.params["registry"]["model_name"]
         mv = self.mlflow_client.get_model_version_by_alias(name, "champion")
@@ -224,7 +220,7 @@ class ForecastService:
                     timeout_s=self.cfg["weather_timeout_seconds"],
                     retries=1,
                 )
-                save_snapshot(raw)  # also the input of the Stage 10 weather check
+                save_snapshot(raw, SNAPSHOT_DIR)  # input of the Stage 10 weather check
                 self._weather = weather_features(raw, self.params["features"])
                 self._weather_at, self._weather_note = time.monotonic(), None
             except Exception as exc:  # noqa: BLE001 - fall back to a saved forecast
@@ -235,9 +231,7 @@ class ForecastService:
 
     def saved_weather(self) -> tuple[pd.DataFrame | None, str]:
         """The newest saved Open-Meteo forecast, as weather features."""
-        from airsense.ingestion.openmeteo_client import OUT_DIR
-
-        files = sorted(OUT_DIR.glob("*/*.csv"))
+        files = sorted(SNAPSHOT_DIR.glob("*/*.csv"))
         if not files:
             return None, "weather forecast unavailable (no saved forecast either)"
         raw = pd.read_csv(files[-1])
@@ -259,7 +253,7 @@ class ForecastService:
 
             g = self.params["guidance"]
             self._guidance = (
-                open_client(PROJECT_ROOT / g["qdrant_path"]),
+                open_client(g["qdrant_url"]),
                 sentence_embedder(g["embedding_model"]),
                 g["collection"],
             )

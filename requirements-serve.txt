@@ -1,0 +1,31 @@
+# Packages for the serving containers only (backend + model server), Stage 8.
+# The full pipeline environment is requirements.txt; this list is smaller so the
+# image builds faster. CPU-only torch keeps the image ~2 GB instead of ~6 GB.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+fastapi==0.143.3
+starlette==1.8.0
+pydantic==2.14.1
+uvicorn==0.54.0
+mlflow==3.17.1
+lightgbm==4.7.0
+scikit-learn==1.9.1
+scipy==1.18.1
+pandas==2.3.3
+numpy==2.5.4
+pyarrow==25.0.1
+feast==0.67.0
+redis==7.4.0
+hiredis==3.2.1
+duckdb==2.0.0
+qdrant-client==1.19.1
+sentence-transformers==6.1.0
+transformers==5.20.1
+huggingface-hub==1.33.0
+tokenizers==0.23.3
+safetensors==0.8.0
+httpx==0.28.1
+requests==2.34.2
+pyyaml==6.0.3
+python-dotenv==1.2.4
+dvc==3.67.1

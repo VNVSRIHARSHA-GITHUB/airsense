@@ -183,9 +183,9 @@ stages:
     deps:
     - path: data/raw/live/datagov
       hash: md5
-      md5: 793d8437cbcd52f768a7806d545a3a07.dir
-      size: 9390653
-      nfiles: 125
+      md5: 309767c4a4e52c7723e8069e38323af6.dir
+      size: 14875544
+      nfiles: 195
     - path: src/airsense/processing/process_live.py
       hash: md5
       md5: 32f92b64b052f4d70efd450cf70b57a7
@@ -255,17 +255,17 @@ stages:
     outs:
     - path: data/interim/process_live_metrics.json
       hash: md5
-      md5: bdfcd72b97978323805a2901c28deb06
-      size: 2913
+      md5: 97d509e26a7eb43baf497a6b09c287f4
+      size: 2930
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: 8d1f754e83262f133128ebedbd91de3d.dir
-      size: 73922
+      md5: d4eef4052fed328bcbd77dcaba11de42.dir
+      size: 81042
       nfiles: 14
     - path: data/processed/live_station_hourly
       hash: md5
-      md5: a10bad017b6628eb02a0946a862f6d2a.dir
-      size: 157167
+      md5: 2eeb7dd9e1cf86bdc153c658dda83605.dir
+      size: 188849
       nfiles: 14
   validate_processed:
     cmd: python src/airsense/validation/validate_processed.py
@@ -595,8 +595,8 @@ stages:
     deps:
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: 8d1f754e83262f133128ebedbd91de3d.dir
-      size: 73922
+      md5: d4eef4052fed328bcbd77dcaba11de42.dir
+      size: 81042
       nfiles: 14
     - path: src/airsense/features/build_features.py
       hash: md5
@@ -621,12 +621,12 @@ stages:
     outs:
     - path: data/features/pm_live
       hash: md5
-      md5: df08add28c3470a84ec5e0d298241f59.dir
-      size: 198751
+      md5: 578f481307ac8ddadfbcf6c2d7ae5d20.dir
+      size: 250073
       nfiles: 14
     - path: data/interim/features_live_metrics.json
       hash: md5
-      md5: aa9ef1359c0e97749a77d512c7d0e552
+      md5: 503580af5ab5f5e1c4cec9d2be8cf65b
       size: 743
   feast_online:
     cmd: feast -c feature_repo apply && python 
@@ -634,21 +634,21 @@ stages:
     deps:
     - path: data/features/pm_live
       hash: md5
-      md5: df08add28c3470a84ec5e0d298241f59.dir
-      size: 198751
+      md5: 578f481307ac8ddadfbcf6c2d7ae5d20.dir
+      size: 250073
       nfiles: 14
     - path: feature_repo/feature_store.yaml
       hash: md5
-      md5: e1bfa60bcbbd31c48d91dc13cc9037a5
-      size: 514
+      md5: f536e4245e5ce699d5963a0c294358fa
+      size: 646
     - path: feature_repo/features.py
       hash: md5
       md5: ebe627f30bbd3c6c639080138dab5a4c
       size: 4163
     - path: src/airsense/features/feast_online.py
       hash: md5
-      md5: 51a5307d4dca72ea252828a0a757cc05
-      size: 6771
+      md5: 839631314b21bcde5a02a552f25ee090
+      size: 6828
     params:
       params.yaml:
         features.change_hours:
@@ -670,8 +670,8 @@ stages:
     outs:
     - path: data/interim/feast_online_metrics.json
       hash: md5
-      md5: 4cd4716aae8804ed41abc807f7001893
-      size: 662
+      md5: 93bd9dd5eb6e4d3c20af9733ee5de3c6
+      size: 663
   build_training:
     cmd: feast -c feature_repo apply && python 
       src/airsense/features/build_training.py
@@ -964,17 +964,17 @@ stages:
       nfiles: 7
     - path: src/airsense/guidance/index.py
       hash: md5
-      md5: 2e007c5a6ab2e81bc6732261cc061018
-      size: 5833
+      md5: c0afdd2330f81480300226de3638c227
+      size: 5983
     params:
       params.yaml:
         guidance:
           docs_dir: guidance_docs
-          qdrant_path: data/qdrant
+          qdrant_url: http://localhost:6333
           collection: guidance
           embedding_model: sentence-transformers/all-MiniLM-L6-v2
     outs:
     - path: data/interim/guidance_index.json
       hash: md5
-      md5: 0c74207b5a435a0d2447aa3f51f73da4
+      md5: d89c180772d837481d65c99cd47ccdf7
       size: 377

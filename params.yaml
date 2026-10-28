@@ -130,6 +130,6 @@ serving:                         # Stage 6 backend
 
 guidance:                        # Stage 6 health guidance search
   docs_dir: guidance_docs
-  qdrant_path: data/qdrant       # local (embedded) Qdrant now; own container in Stage 8
+  qdrant_url: http://localhost:6333   # Qdrant server (container); env QDRANT_URL overrides
   collection: guidance
   embedding_model: sentence-transformers/all-MiniLM-L6-v2

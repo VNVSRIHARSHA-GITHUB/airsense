@@ -26,9 +26,10 @@ from pathlib import Path
 
 import yaml
 
+from airsense.common.settings import PROJECT_ROOT
+
 log = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SNAPSHOT_DIR = Path("data/raw/live/datagov")
 LOG_DIR = Path("logs")
 LOG_LINE = re.compile(

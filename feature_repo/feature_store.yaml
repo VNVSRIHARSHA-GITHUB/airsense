@@ -3,8 +3,9 @@ project: airsense
 provider: local
 registry: data/registry.db          # feature definitions, written by `feast apply`
 online_store:
-  type: sqlite                      # SQLite now, Redis in Stage 8
-  path: data/online_store.db        # latest live features per city, for serving
+  type: redis                       # latest live features per city, for serving (container)
+  connection_string: localhost:6379 # from the laptop; the backend container uses redis:6379
+                                    # (REDIS_CONNECTION, applied in airsense.common.settings)
 offline_store:
   type: duckdb                      # point-in-time joins in DuckDB (the default "file" store ran out of memory)
 entity_key_serialization_version: 3

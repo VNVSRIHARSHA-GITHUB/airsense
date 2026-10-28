@@ -7,8 +7,9 @@ has a small header (category, PM2.5 range, sources) and one section per user gro
 in Qdrant: vector = sentence embedding of the text, payload = category, group,
 text, sources.
 
-Qdrant runs in local (embedded) mode on a folder now and as its own container in
-Stage 8; only the client construction changes.
+Qdrant runs as its own server (a container since Stage 8), at
+`guidance.qdrant_url` (env QDRANT_URL overrides it). Tests use a temporary local
+folder instead of a server.
 
 Run as the DVC stage `guidance_index`:  python src/airsense/guidance/index.py
 """
@@ -25,9 +26,10 @@ from pathlib import Path
 import numpy as np
 import yaml
 
+from airsense.common.settings import PROJECT_ROOT, load_params
+
 log = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 METRICS_FILE = PROJECT_ROOT / "data" / "interim" / "guidance_index.json"
 GROUPS = {
     "general": "advice for the general public",
@@ -78,10 +80,13 @@ def sentence_embedder(model_name: str) -> Embedder:
     return lambda texts: model.encode(texts, normalize_embeddings=True)
 
 
-def open_client(path: Path):
+def open_client(location: str | Path):
+    """A Qdrant server URL (http://...), or a local folder (used by the tests)."""
     from qdrant_client import QdrantClient
 
-    return QdrantClient(path=str(path))  # local mode; Stage 8: QdrantClient(url=...)
+    if str(location).startswith(("http://", "https://")):
+        return QdrantClient(url=str(location), timeout=10)
+    return QdrantClient(path=str(location))
 
 
 def build(client, collection: str, entries: list[dict], embed: Embedder) -> int:
@@ -128,12 +133,11 @@ def main() -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
-    with open(PROJECT_ROOT / "params.yaml") as f:
-        cfg = yaml.safe_load(f)["guidance"]
+    cfg = load_params()["guidance"]
     start = time.perf_counter()
     entries = load_docs(PROJECT_ROOT / cfg["docs_dir"])
     embed = sentence_embedder(cfg["embedding_model"])
-    client = open_client(PROJECT_ROOT / cfg["qdrant_path"])
+    client = open_client(cfg["qdrant_url"])
     n = build(client, cfg["collection"], entries, embed)
     check = search(client, cfg["collection"], embed, "Poor", "sensitive")[0]
     client.close()
