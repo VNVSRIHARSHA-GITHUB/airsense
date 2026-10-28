@@ -1,0 +1,26 @@
+# Only code goes into the images; everything else is mounted or not needed.
+.git
+.venv
+.env
+.env.*
+!.env.example
+.dvc/tmp
+.dvc/cache
+data
+models
+mlruns
+mlflow.db
+logs
+reports
+notebooks
+docs
+tests
+guidance_docs
+feature_repo
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+*.egg-info
+*.md
+*.zip
