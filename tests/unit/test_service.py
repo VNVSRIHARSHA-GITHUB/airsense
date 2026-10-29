@@ -124,7 +124,8 @@ def test_guidance_failure_keeps_the_forecast():
     s.guidance = broken
     out = s.forecast("Delhi")
     assert out["available"] and out["guidance"] is None
-    assert out["warnings"][0].startswith("guidance unavailable")
+    assert out["warnings"][0] == "health advice service unavailable right now"
+    assert "already accessed" not in " ".join(out["warnings"])  # detail only in the log
 
 
 def test_incomplete_weather_gives_no_forecast():

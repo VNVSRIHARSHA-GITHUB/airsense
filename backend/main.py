@@ -138,7 +138,7 @@ def create_app(service=None, pipeline=None) -> FastAPI:
 
     def unavailable(what: str, exc: Exception) -> HTTPException:
         log.error("%s unavailable: %s", what, exc)
-        return HTTPException(503, f"{what} unavailable, try again later")
+        return HTTPException(503, f"{what} unavailable")
 
     @app.get("/health")
     def health() -> dict:

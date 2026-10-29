@@ -258,7 +258,8 @@ async function refresh() {
     renderProblems(d);
     selectStage(page.selected || (d.stages.find((s) => s.status === "changed") || d.stages[0]).name);
   } catch (e) {
-    showBanner(`The pipeline status at ${API}/pipeline cannot be loaded (${e.message}). Check that the backend is running, then use Refresh.`);
+    showBanner(`Could not load the pipeline status: ${reason(e)}. Use Refresh to try again in a moment.`);
+    if (!page.data) document.getElementById("asof").textContent = "No status right now";
   }
 }
 

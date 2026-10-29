@@ -382,7 +382,8 @@ class ForecastService:
         try:
             guidance = self.guidance(worst["aqi_category"], group)
         except Exception as exc:  # noqa: BLE001 - forecast still useful without it
-            out["warnings"].append(f"guidance unavailable ({exc})")
+            log.warning("Guidance unavailable for %s: %s", city, exc)
+            out["warnings"].append("health advice service unavailable right now")
         return {
             **out,
             "available": True,

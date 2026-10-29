@@ -17,7 +17,12 @@ function aqiInfo(name) {
 }
 
 async function getJSON(path) {
-  const r = await fetch(API + path, { headers: { Accept: "application/json" } });
+  let r;
+  try {
+    r = await fetch(API + path, { headers: { Accept: "application/json" } });
+  } catch (_) {  // nothing answered at all (laptop run with the backend stopped)
+    throw new Error("The AirSense service cannot be reached");
+  }
   let body = null;
   try { body = await r.json(); } catch (_) { /* not JSON */ }
   if (!r.ok) {
@@ -25,6 +30,11 @@ async function getJSON(path) {
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   return body;
+}
+
+// The reason from an error, without a trailing full stop, to put inside a sentence.
+function reason(e) {
+  return String(e && e.message ? e.message : e).replace(/[.\s]+$/, "");
 }
 
 const IST = "Asia/Kolkata";

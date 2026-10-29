@@ -385,7 +385,7 @@ async function loadForecast() {
     box.replaceChildren(
       el("div", { class: "unavailable" },
         el("h3", {}, `Could not load the forecast for ${state.city}`),
-        el("p", {}, `${e.message}. Use Refresh to try again.`)),
+        el("p", {}, `${reason(e)}. Use Refresh to try again in a moment.`)),
     );
   } finally {
     box.removeAttribute("aria-busy");
@@ -405,7 +405,8 @@ async function refreshAll() {
     await loadCities();
     showBanner("");
   } catch (e) {
-    showBanner(`Could not load the city list from ${API}: ${e.message}. If the backend is running, use Refresh in a moment.`);
+    showBanner(`Could not load the city list: ${reason(e)}. Use Refresh to try again in a moment.`);
+    document.getElementById("asof").textContent = "No data right now";  // not "Loading…"
     return;
   }
   await loadForecast();
