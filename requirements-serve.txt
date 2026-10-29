@@ -1,7 +1,8 @@
 # Packages for the serving containers only (backend + model server), Stage 8.
 # The full pipeline environment is requirements.txt; this list is smaller so the
-# image builds faster. CPU-only torch keeps the image ~2 GB instead of ~6 GB.
---extra-index-url https://download.pytorch.org/whl/cpu
+# image builds faster. CPU-only torch keeps the image ~3 GB instead of ~6 GB.
+# torch itself is installed first by docker/app.Dockerfile from the PyTorch CPU
+# index; listed here so pip keeps that version and installs its dependencies.
 torch==2.14.1+cpu
 fastapi==0.143.3
 starlette==1.8.0

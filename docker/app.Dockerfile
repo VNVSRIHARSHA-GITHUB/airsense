@@ -9,12 +9,19 @@
 
 # ---------- stage 1: install packages into a virtual environment ----------
 FROM python:3.12-slim-bookworm AS builder
-ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=60 PIP_RETRIES=10
 RUN python -m venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH
+# CPU-only torch, alone and only from the PyTorch index (its own cached layer,
+# so the large download is not repeated when other packages change). --no-deps:
+# its dependencies come from PyPI in the next step, pinned like everything else.
+RUN pip install --no-deps --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.14.1+cpu
 COPY requirements-serve.txt requirements.txt /tmp/req/
-# requirements.txt as constraints: every indirect package gets the same version
-# as in the laptop's venv, but only what serving needs is installed.
+# Everything else only from PyPI. requirements.txt as constraints: every indirect
+# package gets the same version as in the laptop's venv, but only what serving
+# needs is installed.
 RUN pip install -r /tmp/req/requirements-serve.txt -c /tmp/req/requirements.txt
 COPY pyproject.toml /app/
 COPY src /app/src
