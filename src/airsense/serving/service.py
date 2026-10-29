@@ -16,6 +16,7 @@ One request for a city:
 import json
 import logging
 import os
+import tempfile
 import threading
 import time
 import warnings
@@ -143,7 +144,11 @@ class ForecastService:
             ).isoformat(),
             "training_data_md5": run.data.tags.get("training_data_md5"),
         }
-        self.booster = mlflow.lightgbm.load_model(f"models:/{name}/{mv.version}")
+        # Load from a temporary copy: MLflow writes a small file into the folder
+        # it loads from, and in the container mlruns/ is mounted read-only.
+        self.booster = mlflow.lightgbm.load_model(
+            f"models:/{name}/{mv.version}", dst_path=tempfile.mkdtemp()
+        )
         self.features = self.booster.feature_name()
         self.codes = mlflow.artifacts.load_dict(
             f"runs:/{mv.run_id}/category_codes.json"

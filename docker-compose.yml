@@ -1,0 +1,118 @@
+# AirSense serving system (Stage 8): five containers on one private network.
+#
+#   browser -> frontend (nginx, :8080) -> /api -> backend (FastAPI, :8000)
+#   backend -> model-server (MLflow, :5002)   24-hour forecast
+#           -> redis (:6379)                  Feast online features
+#           -> qdrant (:6333)                 health-guidance search
+#
+# Only the frontend is reachable from other machines (port 8080). The backend,
+# Redis and Qdrant are published on 127.0.0.1 only: the backend for /docs, Redis
+# and Qdrant so the DVC pipeline on the laptop (feast_online, guidance_index) can
+# fill them. The model server has no published port at all.
+#
+# The project folder is mounted read-only at the SAME absolute path, because the
+# MLflow database and the Feast registry store absolute paths. Run from the
+# project root:
+#   AIRSENSE_TAG=$(git rev-parse --short HEAD) docker compose up -d --build
+
+x-app: &app
+  image: airsense-app:${AIRSENSE_TAG:-dev}
+  build:
+    context: .
+    dockerfile: docker/app.Dockerfile
+  restart: unless-stopped
+  environment: &app-env
+    AIRSENSE_ROOT: ${PWD}
+    MLFLOW_TRACKING_URI: sqlite:///${PWD}/mlflow.db
+  volumes: &app-volumes
+    - ${PWD}:${PWD}:ro
+
+services:
+  redis:
+    image: redis:7.4.2-alpine
+    command: ["redis-server", "--save", "60", "1", "--maxmemory", "200mb"]
+    restart: unless-stopped
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: ["redis-data:/data"]
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.0
+    restart: unless-stopped
+    ports: ["127.0.0.1:6333:6333"]
+    volumes: ["qdrant-data:/qdrant/storage"]
+    mem_limit: 512m
+    healthcheck:  # the image has no curl; bash can open a TCP connection itself
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  model-server:
+    <<: *app
+    command: ["bash", "model_server/serve.sh"]
+    environment:
+      <<: *app-env
+      MODEL_SERVER_HOST: 0.0.0.0
+    mem_limit: 1536m
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5002/ping', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  backend:
+    <<: *app
+    environment:
+      <<: *app-env
+      MODEL_SERVER_URL: http://model-server:5002
+      QDRANT_URL: http://qdrant:6333
+      REDIS_CONNECTION: redis:6379
+    volumes:
+      - ${PWD}:${PWD}:ro
+      # the only places the backend writes: DVC's scratch folder (dvc status for
+      # the console) and the saved Open-Meteo forecasts (fallback weather)
+      - ${PWD}/.dvc/tmp:${PWD}/.dvc/tmp
+      - ${PWD}/data/raw/live/openmeteo:${PWD}/data/raw/live/openmeteo
+      # embedding model already downloaded on the laptop; HF_HUB_OFFLINE=1 in the image
+      - ${HOME}/.cache/huggingface:/home/airsense/.cache/huggingface
+    ports: ["127.0.0.1:8000:8000"]
+    mem_limit: 3g
+    depends_on:
+      model-server: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      qdrant: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 120s  # loads the embedding model before answering
+
+  frontend:
+    image: airsense-frontend:${AIRSENSE_TAG:-dev}
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    restart: unless-stopped
+    ports: ["8080:8080"]
+    mem_limit: 64m
+    depends_on:
+      backend: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis-data:
+  qdrant-data:
