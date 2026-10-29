@@ -1,5 +1,5 @@
 {
-  "built_at_utc": "2026-10-28T18:15:41.651842+00:00",
+  "built_at_utc": "2026-10-29T07:39:37.970951+00:00",
   "points": 18,
   "categories": [
     "Good",
@@ -10,7 +10,7 @@
     "Very Poor"
   ],
   "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-  "seconds": 16.2,
+  "seconds": 19.8,
   "check_query": {
     "category": "Poor",
     "group": "sensitive"
