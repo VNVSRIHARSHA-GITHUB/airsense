@@ -4,8 +4,11 @@ provider: local
 registry: data/registry.db          # feature definitions, written by `feast apply`
 online_store:
   type: redis                       # latest live features per city, for serving (container)
-  connection_string: localhost:6379 # from the laptop; the backend container uses redis:6379
-                                    # (REDIS_CONNECTION, applied in airsense.common.settings)
+  # Address from the laptop; the backend container replaces only the address
+  # (REDIS_CONNECTION=redis:6379, applied in airsense.common.settings).
+  # retry=null: fail at once when Redis is down instead of the client's default
+  # 3 retries with growing waits (~7 s per read); our code retries once itself.
+  connection_string: localhost:6379,retry=null,socket_connect_timeout=2,socket_timeout=2
 offline_store:
   type: duckdb                      # point-in-time joins in DuckDB (the default "file" store ran out of memory)
 entity_key_serialization_version: 3

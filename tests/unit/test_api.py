@@ -8,12 +8,20 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from main import create_app
 
-from airsense.serving.service import FeatureStoreBusy, ModelServerError
+from airsense.serving.service import (
+    FeatureStoreBusy,
+    FeatureStoreDown,
+    ModelServerError,
+)
 
 
 class FakeService:
     def __init__(self):
-        self.cities = {"Delhi": {"region": "North"}, "Pune": {"region": "West"}}
+        self.cities = {
+            "Delhi": {"region": "North"},
+            "Pune": {"region": "West"},
+            "Patna": {"region": "East"},
+        }
         self.model = {"name": "airsense-pm25", "version": "1", "target_mode": "change"}
 
     def health(self):
@@ -35,6 +43,8 @@ class FakeService:
             raise ModelServerError("connection refused")
         if city == "Pune":
             raise FeatureStoreBusy("online store read failed")
+        if city == "Patna":
+            raise FeatureStoreDown("Error 111 connecting to redis:6379")
         if group == "sensitive":
             return {
                 "city": city,
@@ -148,3 +158,9 @@ def test_pipeline_endpoint():
 def test_feature_store_refresh_is_503_not_500():
     r = client.get("/forecast/Pune")
     assert r.status_code == 503 and "being refreshed" in r.json()["detail"]
+
+
+def test_feature_store_down_is_503_with_its_own_message():
+    r = client.get("/forecast/Patna")
+    assert r.status_code == 503 and "Live data store" in r.json()["detail"]
+    assert "being refreshed" not in r.json()["detail"]

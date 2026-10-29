@@ -8,6 +8,7 @@ import pytest
 from airsense.serving.service import (
     WEATHER_COLS,
     FeatureStoreBusy,
+    FeatureStoreDown,
     ForecastService,
     ModelServerError,
 )
@@ -222,4 +223,20 @@ def test_online_read_is_retried_once_then_reported(monkeypatch):
 
     s._read_online = broken
     with pytest.raises(FeatureStoreBusy):
+        s.live_features("Delhi")
+
+
+def test_unreachable_redis_is_reported_as_down(monkeypatch):
+    from redis.exceptions import ConnectionError as RedisConnectionError
+
+    from airsense.serving import service
+
+    monkeypatch.setattr(service.time, "sleep", lambda s: None)
+    s = ForecastService.__new__(ForecastService)
+
+    def down(city):
+        raise RedisConnectionError("Error 111 connecting to redis:6379.")
+
+    s._read_online = down
+    with pytest.raises(FeatureStoreDown):
         s.live_features("Delhi")

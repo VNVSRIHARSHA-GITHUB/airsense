@@ -29,10 +29,14 @@ def test_feature_store_redis_address(tmp_path, monkeypatch):
     repo = tmp_path / "feature_repo"
     repo.mkdir()
     shutil.copy(ROOT / "feature_repo" / "feature_store.yaml", repo)
+    options = "retry=null,socket_connect_timeout=2,socket_timeout=2"
     monkeypatch.delenv("REDIS_CONNECTION", raising=False)
-    assert settings.feature_store(tmp_path).config.online_store.connection_string == (
-        "localhost:6379"
-    )
-    monkeypatch.setenv("REDIS_CONNECTION", "redis:6379")
+    conn = settings.feature_store(tmp_path).config.online_store.connection_string
+    assert conn == f"localhost:6379,{options}"
+    monkeypatch.setenv("REDIS_CONNECTION", "redis:6379")  # address only: options kept
     store = settings.feature_store(tmp_path)  # no connection is made here
-    assert store.config.online_store.connection_string == "redis:6379"
+    assert store.config.online_store.connection_string == f"redis:6379,{options}"
+    monkeypatch.setenv("REDIS_CONNECTION", "redis:6379,db=1")  # own options win
+    assert settings.feature_store(tmp_path).config.online_store.connection_string == (
+        "redis:6379,db=1"
+    )

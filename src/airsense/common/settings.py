@@ -40,7 +40,11 @@ def load_params(root: Path = PROJECT_ROOT) -> dict:
 
 
 def feature_store(root: Path = PROJECT_ROOT):
-    """Feast store of feature_repo/, with the Redis address from REDIS_CONNECTION."""
+    """Feast store of feature_repo/, with the Redis address from REDIS_CONNECTION.
+
+    REDIS_CONNECTION gives host:port; the options after it in feature_store.yaml
+    (timeouts, retry) are kept unless REDIS_CONNECTION brings its own.
+    """
     from feast import FeatureStore
     from feast.repo_config import load_repo_config
 
@@ -48,5 +52,8 @@ def feature_store(root: Path = PROJECT_ROOT):
     config = load_repo_config(repo, repo / "feature_store.yaml")
     connection = os.environ.get("REDIS_CONNECTION")
     if connection and getattr(config.online_store, "type", "") == "redis":
+        if "," not in connection:
+            options = config.online_store.connection_string.split(",")[1:]
+            connection = ",".join([connection, *options])
         config.online_store.connection_string = connection
     return FeatureStore(repo_path=str(repo), config=config)

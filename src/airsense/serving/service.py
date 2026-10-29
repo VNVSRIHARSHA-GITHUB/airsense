@@ -52,8 +52,24 @@ class ModelServerError(RuntimeError):
     """The model server could not be reached or gave no usable answer."""
 
 
-class FeatureStoreBusy(RuntimeError):
-    """The online store could not be read, e.g. while it is being refreshed."""
+class FeatureStoreError(RuntimeError):
+    """The online store could not be read."""
+
+
+class FeatureStoreBusy(FeatureStoreError):
+    """The online store answered but the read failed, e.g. during a refresh."""
+
+
+class FeatureStoreDown(FeatureStoreError):
+    """The online store (Redis) could not be reached at all."""
+
+
+def _unreachable(exc: Exception) -> bool:
+    """True for connection failures (Redis stopped, name unknown, timeout)."""
+    from redis.exceptions import ConnectionError as RedisConnectionError
+    from redis.exceptions import TimeoutError as RedisTimeoutError
+
+    return isinstance(exc, RedisConnectionError | RedisTimeoutError | OSError)
 
 
 def integer_columns(model_uri: str) -> set[str]:
@@ -191,7 +207,8 @@ class ForecastService:
             try:
                 d = self._read_online(city)
             except Exception as exc:
-                raise FeatureStoreBusy(f"online store read failed: {exc}") from exc
+                error = FeatureStoreDown if _unreachable(exc) else FeatureStoreBusy
+                raise error(f"online store read failed: {exc}") from exc
         feats = {
             k: v[0] for k, v in d.items() if not k.endswith("__ts") and k != "city"
         }
