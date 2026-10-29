@@ -29,10 +29,21 @@ RUN apt-get update \
 # Same user id as the laptop user, so files on the mounted folder are readable
 # and anything written to the writable mounts belongs to that user.
 ARG UID=1000
-RUN useradd --create-home --uid ${UID} airsense
+RUN useradd --create-home --uid ${UID} airsense \
+    && install -d -o airsense -g airsense /home/airsense/.cache
+# (.cache must exist and belong to airsense before the Hugging Face cache is
+#  mounted inside it; otherwise Docker creates it as root and nothing else,
+#  e.g. matplotlib, can write there)
 COPY --from=builder /opt/venv /opt/venv
 COPY backend /app/backend
 COPY model_server /app/model_server
+# Fail the build, not the running container, if a module loaded at run time is
+# missing. Some are imported only when used (e.g. Feast's DuckDB offline store
+# when feature_store.yaml is read), so a plain `import feast` would not notice.
+RUN /opt/venv/bin/python -c "import airsense.serving.service, airsense.serving.pipeline, \
+    airsense.guidance.index, mlflow.lightgbm, qdrant_client, dvc.cli, \
+    sentence_transformers, feast.infra.online_stores.redis, \
+    feast.infra.offline_stores.duckdb"
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
