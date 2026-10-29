@@ -129,6 +129,7 @@ stages:
         cache: false
 
 
+  # Writes to the Redis container: start it first (docker compose up -d redis).
   feast_online:
     # `feast apply` registers the definitions (idempotent, ~2 s), then feast_online.py
     # loads the live features into the online store and checks them. The registry is
@@ -216,6 +217,7 @@ stages:
       - data/interim/registry.json:
           cache: false
 
+  # Writes to the Qdrant container: start it first (docker compose up -d qdrant).
   guidance_index:
     # Embeds the health-guidance texts and stores them in local Qdrant.
     # Stop the backend first: local Qdrant allows only one process on the folder.

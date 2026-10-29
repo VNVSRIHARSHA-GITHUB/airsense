@@ -2,7 +2,7 @@
 
 Manual checks of the two web pages, run in a browser against the real system. The API and the logic behind the pages are covered by the automated tests (`pytest`); these checks cover what only a person can judge: layout, wording, and behaviour when something fails. The results feed the test report (Stage 11).
 
-**Setup:** model server (`bash model_server/serve.sh`), backend (`uvicorn main:app --app-dir backend --port 8000`) and frontend (`python -m http.server 8080 --directory frontend`) running; live features refreshed (`dvc repro feast_online`) less than 4 hours ago, unless a check says otherwise. Browser: Chrome or Firefox; phone checks with the browser's device toolbar (F12, then Ctrl+Shift+M) at 400 px width, or a real phone.
+**Setup:** the containers running (`docker compose up -d`, see `docs/architecture.md` §6), or on the laptop the model server (`bash model_server/serve.sh`), backend (`uvicorn main:app --app-dir backend --port 8000`) and frontend (`python -m http.server 8080 --directory frontend`) with Redis and Qdrant (`docker compose up -d redis qdrant`); in the container setup, "stop the model server" means `docker compose stop model-server` (and likewise for the backend); live features refreshed (`dvc repro feast_online`) less than 4 hours ago, unless a check says otherwise. Browser: Chrome or Firefox; phone checks with the browser's device toolbar (F12, then Ctrl+Shift+M) at 400 px width, or a real phone.
 
 **How to record:** write Pass or Fail, the date, and a note for every Fail (what happened, screenshot name).
 

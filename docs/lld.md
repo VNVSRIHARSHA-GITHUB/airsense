@@ -5,6 +5,8 @@ the API contract, the request flow, the model input contract, error handling,
 configuration and tests. It covers the code in `model_server/`, `backend/`,
 `src/airsense/serving/`, `src/airsense/guidance/` and the web pages in `frontend/`
 (Forecast page and Pipeline console; their use is described in `docs/user_manual.md`).
+How these parts are deployed as containers, and how to run them, is in
+`docs/architecture.md`.
 
 The data pipeline that produces the model and the features (ingestion, Spark
 processing, Feast, training, gate, registry) is described in
@@ -17,7 +19,7 @@ reads its outputs.
 
 ```mermaid
 flowchart LR
-    UI["Frontend<br/>(Stage 7)"] -- "HTTP GET (JSON)" --> API
+    UI["Frontend<br/>(nginx, /api)"] -- "HTTP GET (JSON)" --> API
 
     subgraph backend ["Backend · FastAPI · port 8000"]
         API["backend/main.py<br/>routes + response schemas"]
@@ -32,10 +34,10 @@ flowchart LR
     end
 
     SVC -- "POST /invocations" --> MS["MLflow model server<br/>models:/airsense-pm25@champion<br/>port 5002"]
-    SVC -- "online features" --> FEAST[("Feast online store<br/>SQLite")]
+    SVC -- "online features" --> FEAST[("Feast online store<br/>Redis")]
     SVC -- "hourly forecast, 14 cities" --> OM(["Open-Meteo<br/>forecast API"])
     SVC -- "champion version, run info,<br/>booster for SHAP" --> REG[("MLflow tracking +<br/>Model Registry · mlflow.db")]
-    GDX --> QD[("Qdrant (local mode)<br/>data/qdrant")]
+    GDX --> QD[("Qdrant server<br/>collection guidance")]
     MS -. "loads model" .-> REG
 ```
 
@@ -46,26 +48,32 @@ flowchart LR
 | ForecastService | `src/airsense/serving/service.py` | One forecast end to end: freshness check, weather, input rows, model call, AQI, explanation, guidance | Feast online store, Open-Meteo, MLflow, Qdrant | weather snapshots `data/raw/live/openmeteo/` |
 | Row builder | `src/airsense/serving/assemble.py` | Builds the 24 input rows exactly as training did | — | — |
 | Explanations | `src/airsense/serving/explain.py` | Turns SHAP values into the top factors in plain words | — | — |
-| Guidance index | `src/airsense/guidance/index.py`, `guidance_docs/` | Builds (DVC stage `guidance_index`) and searches the health-advice collection | `guidance_docs/*.md` | `data/qdrant/`, `data/interim/guidance_index.json` |
+| Guidance index | `src/airsense/guidance/index.py`, `guidance_docs/` | Builds (DVC stage `guidance_index`) and searches the health-advice collection | `guidance_docs/*.md` | Qdrant collection `guidance`, `data/interim/guidance_index.json` |
 | Pipeline status | `src/airsense/serving/pipeline.py` | Read-only summary for the operators' console: steps and graph, `dvc status`, step reports, throughput, gate, registry, collection health, recent log problems; cached 60 s | `dvc.yaml`, `data/interim/*.json`, snapshot folder, `logs/*.log` | — |
+| Settings | `src/airsense/common/settings.py` | One place for the project folder, `params.yaml` with environment overrides, and the Feast store with the Redis address; the same code runs on the laptop and in the containers | `params.yaml`, `feature_repo/feature_store.yaml`, environment | — |
 | Web pages | `frontend/` (HTML, CSS, JavaScript, Chart.js included) | Forecast page for users, Pipeline console for operators; call the API over HTTP only | the API | — |
 
 **Why two serving processes.** The model server is MLflow's standard way to serve a
 registered model; it knows nothing about cities, weather or users. The backend owns
 all application logic. A new model version therefore needs no backend code change,
-and the model server can be scaled or replaced (Stage 8 containers) on its own.
+and the model server can be restarted or replaced on its own (it runs in its own
+container).
 
 **Why the backend also loads the model.** SHAP explanations need the LightGBM
 booster itself (`pred_contrib=True`), which the REST interface does not expose. The
 backend loads the **same registry version** the model server serves (resolved through
 the `champion` alias at startup) and uses it only for explanations; forecasts always
-come from the model server. `/health` reports if the two could differ (§6).
+come from the model server. `/health` reports if the two could differ (§6). Both load
+the model from a temporary copy, because MLflow writes a small file
+(`registered_model_meta`) into the folder it loads from, and in the containers the
+model store is mounted read-only.
 
 ---
 
 ## 2. API contract
 
-Base URL: `http://127.0.0.1:8000`. All endpoints are `GET`, return JSON, and are
+Base URL: `http://127.0.0.1:8000` (in the containers the web pages reach it as `/api`
+through nginx). All endpoints are `GET`, return JSON, and are
 documented interactively at `/docs` (OpenAPI, generated from the schemas in
 `backend/main.py`).
 
@@ -74,8 +82,8 @@ documented interactively at `/docs` (OpenAPI, generated from the schemas in
 | Endpoint | Parameters | Success | Errors |
 |---|---|---|---|
 | `GET /health` | — | 200: status of model server, feature store, champion version | — (problems are reported in the body, never as an error) |
-| `GET /cities` | — | 200: latest PM2.5 for all 14 cities | — |
-| `GET /forecast/{city}` | `city` (path, exact name, e.g. `Delhi`); `group` (query: `general` · `sensitive` · `outdoor_workers`, default `general`) | 200: forecast, or `available: false` with a reason | 404 unknown city · 422 invalid `group` · 503 model server unavailable |
+| `GET /cities` | — | 200: latest PM2.5 for all 14 cities | 503 live data store unavailable or being refreshed |
+| `GET /forecast/{city}` | `city` (path, exact name, e.g. `Delhi`); `group` (query: `general` · `sensitive` · `outdoor_workers`, default `general`) | 200: forecast, or `available: false` with a reason | 404 unknown city · 422 invalid `group` · 503 model server or live data store unavailable |
 | `GET /model` | — | 200: champion model and its metrics | — |
 | `GET /guidance` | `category` (query, required: `Good` · `Satisfactory` · `Moderate` · `Poor` · `Very Poor` · `Severe`); `group` (as above) | 200: best-matching advice | 422 invalid value · 503 guidance index unavailable |
 | `GET /pipeline` | — | 200: pipeline status for the operators' console | — (a failed `dvc status` is reported in the body) |
@@ -219,8 +227,16 @@ city wins).
 **Freshness rule.** `age = now − t`. A forecast is made only if a current value
 exists and `age ≤ validation.processed.max_live_age_hours` (4 h). The normal age is
 about 2–3 h: the hour label is the start of the hour, CPCB publishes about an hour
-later, and collection runs every 30 minutes. Feast's own TTL is not used for this
-because the SQLite online store does not apply it on reads.
+later, and collection runs every 30 minutes. Feast's own TTL is not used for this:
+the online store does not apply it on reads, and an explicit rule in the service is
+visible in the answer ("latest PM2.5 value is X h old") and covered by tests.
+
+**Online store.** Redis (a container since Stage 8); writes by `feast_online` replace
+a city's row atomically. The connection string in `feature_store.yaml` carries
+`retry=null,socket_connect_timeout=2,socket_timeout=2`: without `retry=null` the Redis
+client retries a failed connection three times with growing waits (about 7 s per
+read), so a stopped Redis kept a page waiting for a minute. The containers replace
+only the address (`REDIS_CONNECTION=redis:6379`); the options are kept.
 
 ### 3.2 Weather
 
@@ -279,7 +295,7 @@ the current value, in µg/m³.
 National AQI health statements (2014) and WHO public advice (2021); sources are
 stored with every text. The DVC stage `guidance_index` embeds the 18 texts with
 `sentence-transformers/all-MiniLM-L6-v2` (384 dimensions, normalised) and stores them
-in a Qdrant collection (cosine distance) with category, group, text and sources as
+in the collection `guidance` of the Qdrant server (cosine distance) with category, group, text and sources as
 payload.
 
 A search filters on the **category** (exact match) and ranks by similarity to a
@@ -338,26 +354,26 @@ saved forecast snapshots (§3.2) allow measuring this gap in Stage 10.
 At startup (`lifespan` in `main.py`) the backend creates one `ForecastService`, which:
 
 1. reads `params.yaml`;
-2. opens the Feast feature store (`feature_repo/`);
+2. opens the Feast feature store (`feature_repo/`, online store Redis at the address
+   from `REDIS_CONNECTION` if set);
 3. resolves `models:/airsense-pm25@champion` to a version number in the MLflow
    Registry, reads its run (metrics, `target_mode`, training-data checksum) and loads
-   that version's booster and `category_codes.json`.
+   that version's booster (into a temporary folder, §1) and `category_codes.json`.
 
-The embedding model and Qdrant are opened at startup (a failure there only
-disables guidance), behind a lock because local Qdrant allows a single open client
-per folder.
+The embedding model and the Qdrant client are opened at startup; a failure there only
+disables guidance. Qdrant runs as a server, so the index can be rebuilt
+(`dvc repro guidance_index`) while the backend is running.
 
 **Concurrency.** FastAPI runs each request in a worker thread, and a web page sends
-several requests at once (`/cities` and `/forecast`). Feast's SQLite online store
-shares one database connection between threads, and two simultaneous reads broke
-it (`IndexError`), so online reads take turns behind a lock; a read takes about
-0.5 ms, so the wait is not noticeable. The online store is also rewritten by
+several requests at once (`/cities` and `/forecast`). With the earlier SQLite online
+store two simultaneous reads broke its shared connection (`IndexError`), so online
+reads take turns behind a lock; a read takes about 1 ms, so the lock is kept. The online store is also rewritten by
 another process (`dvc repro feast_online`), which a lock cannot prevent: a failed
 read is retried once after 0.5 s, and a second failure becomes a 503 ("Live data
 (being refreshed) unavailable") instead of an error.
 
 **A new champion** (promoted by the `register` stage) is picked up by restarting the
-model server and then the backend. Until both are restarted, `/health` shows
+model server and then the backend (`docker compose restart model-server backend`). Until both are restarted, `/health` shows
 `champion_up_to_date: false` (the registry alias points to a version other than the
 one loaded). In Stage 9 the restart becomes part of the automated pipeline.
 
@@ -375,18 +391,21 @@ one loaded). In Stage 9 the restart becomes part of the automated pipeline.
 | Some PM2.5 history empty (collection gap) | forecast made; warning "PM2.5 history missing for: …" | same |
 | Weather provider down or slow (> 10 s) | forecast made with the newest saved weather forecast; note "live weather forecast unavailable; using the forecast fetched …"; live call retried after 5 min | `weather_table`, `saved_weather` |
 | Weather missing for any of the 25 hours (no usable saved forecast either) | 200, `available: false`, "weather forecast missing for N of 25 hours needed" | `ForecastService.forecast` |
-| Model server down, slow (> 10 s) or rejecting the input | 503 "Model server unavailable, try again later"; the cause, including MLflow's explanation (e.g. a schema mismatch), is logged | `ModelServerClient` → `main.py` |
+| Model server down, slow (> 10 s) or rejecting the input | 503 "Model server unavailable"; the cause, including MLflow's explanation (e.g. a schema mismatch), is logged | `ModelServerClient` → `main.py` |
 | Model returns a non-finite value | 200, `available: false`, "model gave no valid forecast" | `ForecastService.forecast` |
 | Forecast below 0 | values set to 0; warning | same |
-| Guidance index locked (index rebuild running) or embedding model missing | forecast made with `guidance: null` and a warning; `/guidance` → 503 | `forecast`, `main.py` |
-| Feature store unreadable | `/health` reports `feature_store: false` | `health` |
+| Qdrant down or embedding model missing | forecast made with `guidance: null` and the warning "health advice service unavailable right now" (the cause only in the log); `/guidance` → 503 | `forecast`, `main.py` |
+| Redis (online store) not reachable | within a second: 503 "Live data store unavailable" for `/forecast` and `/cities`; `/health` reports `feature_store: false` | `live_features` (`FeatureStoreDown`) → `main.py` |
 | `dvc status` fails or times out | `/pipeline` shows every step as `unknown` and the error | `PipelineStatus.build` |
-| Online store being rewritten (`dvc repro feast_online`) | read retried once; then 503 "Live data (being refreshed) unavailable, try again later" for `/forecast` and `/cities` | `live_features` → `main.py` |
+| Online store being rewritten (`dvc repro feast_online`) | read retried once; then 503 "Live data (being refreshed) unavailable" for `/forecast` and `/cities` | `live_features` (`FeatureStoreBusy`) → `main.py` |
+| Backend not running or not answering (containers) | nginx answers `/api/…` at once (3 s if the address does not answer) with 503 and a JSON `detail` the pages show | `docker/nginx.conf` |
 | An integer input (per the model signature) empty for any hour | 200, `available: false`, "input values missing that the model cannot do without: …" | `ForecastService.forecast` |
 
 Design rule: the user always gets either a forecast or a clear reason. Problems with
 optional parts (weather, guidance) reduce quality and are reported in `warnings`;
-only the model server is essential, and its absence is a 503 that a client can retry.
+only the model server and the online store are essential, and their absence is a 503
+that a client can retry. The pages add what to do ("Use Refresh to try again in a
+moment"); the API's messages say only what is unavailable.
 
 ---
 
@@ -394,7 +413,7 @@ only the model server is essential, and its absence is a 503 that a client can r
 
 | Setting | Value | Purpose |
 |---|---|---|
-| `serving.model_server_url` | `http://127.0.0.1:5002` | where the backend finds the model server (5001 is used by another local service) |
+| `serving.model_server_url` | `http://127.0.0.1:5002` | where the backend finds the model server on the laptop (5001 is used by another local service) |
 | `serving.weather_cache_minutes` | 30 | one Open-Meteo call per 30 min for all cities |
 | `serving.weather_retry_minutes` | 5 | wait after a failed weather call |
 | `serving.weather_timeout_seconds` | 10 | one Open-Meteo attempt per request, then the saved forecast |
@@ -403,28 +422,41 @@ only the model server is essential, and its absence is a 503 that a client can r
 | `serving.weather_past_days` / `weather_forecast_days` | 2 / 3 | hours needed for "now", 24-hour rain and *t* + 24 |
 | `serving.top_factors` | 4 | factors in the explanation |
 | `guidance.docs_dir` | `guidance_docs` | source texts |
-| `guidance.qdrant_path` | `data/qdrant` | local Qdrant folder (git-ignored, rebuilt by DVC) |
+| `guidance.qdrant_url` | `http://localhost:6333` | Qdrant server (a container; the collection is rebuilt by DVC) |
 | `guidance.collection` | `guidance` | collection name |
 | `guidance.embedding_model` | `sentence-transformers/all-MiniLM-L6-v2` | text embedding model |
 | `validation.processed.max_live_age_hours` | 4 | freshness limit (shared with data validation) |
 
-Running locally (from the project root, virtual environment active):
+**Environment overrides.** The same code runs on the laptop and in the containers;
+docker-compose sets these variables, the laptop leaves them unset:
+
+| Variable | Containers | Overrides |
+|---|---|---|
+| `AIRSENSE_ROOT` | the project folder (same absolute path as on the laptop) | where code finds `params.yaml`, `dvc.yaml`, data |
+| `MLFLOW_TRACKING_URI` | `sqlite:///<project>/mlflow.db` | MLflow database |
+| `MODEL_SERVER_URL` | `http://model-server:5002` | `serving.model_server_url` |
+| `QDRANT_URL` | `http://qdrant:6333` | `guidance.qdrant_url` |
+| `REDIS_CONNECTION` | `redis:6379` | the address in `feature_store.yaml` (its options are kept) |
+| `MODEL_SERVER_HOST` / `MODEL_SERVER_PORT` | `0.0.0.0` / 5002 | where `serve.sh` listens (laptop: 127.0.0.1) |
+| `HF_HUB_OFFLINE` | `1` | the embedding model is loaded from the mounted cache, no download |
+
+**Running in containers:** `docs/architecture.md` §6.
+
+**Running on the laptop** (development; project root, virtual environment active).
+Redis and Qdrant are needed in both cases; Docker Compose can start just those two:
 
 ```bash
-dvc repro guidance_index                        # once, and after editing guidance_docs/
+docker compose up -d redis qdrant               # online store and guidance index
 dvc repro feast_online                          # refresh live features (Stage 9: Airflow)
+dvc repro guidance_index                        # once, and after editing guidance_docs/
 bash model_server/serve.sh                      # terminal 1: model server on port 5002
 uvicorn main:app --app-dir backend --port 8000  # terminal 2: backend on port 8000
 python -m http.server 8080 --directory frontend # terminal 3: web pages on port 8080
 ```
 
 The web pages find the API through `frontend/assets/config.js`
-(`http://localhost:8000` locally; in the Stage 8 containers nginx forwards `/api`
-to the backend).
-
-`MODEL_SERVER_PORT` overrides the model server's port; `serving.model_server_url`
-must then be changed to match. Rebuilding the guidance index requires the backend to
-be stopped (single-client rule of local Qdrant).
+(`http://localhost:8000` on the laptop; the frontend image replaces it with `/api`,
+which nginx forwards to the backend).
 
 ---
 
@@ -435,12 +467,14 @@ Measured on the development laptop (CPU only, 12 threads):
 | Step | Time |
 |---|---|
 | Model-server call, 24 rows | 11–75 ms (first call after start is the slowest) |
-| Feast online read | < 1 ms (median 0.5 ms) |
+| Feast online read | median 0.3–1.4 ms from the Redis container (measured by `feast_online`); 0.5 ms with the earlier SQLite store |
 | Open-Meteo, 14 cities | one HTTP request, at most once per 30 min |
 | Guidance search | embedding one short query + one Qdrant lookup; the first request also loads the embedding model (a few seconds) |
-| Building the guidance index (18 texts) | 59 s on the first run, almost all of it the one-time 90 MB model download |
+| Building the guidance index (18 texts) | 59 s on the first run, almost all of it the one-time 90 MB model download; about 20 s later |
+| Container start (`docker compose up`) | Redis and Qdrant healthy in ≈ 11 s, model server ≈ 17–35 s, backend ≈ 38–46 s (loads the embedding model) |
+| Failure detection | Redis or backend down: answer within 1 s; an address that does not answer: 3 s |
 
-Memory: the backend holds one LightGBM booster, the weather table (14 cities × 120
+Memory: limits in docker-compose are 3 GB (backend) and 1.5 GB (model server); the backend holds one LightGBM booster, the weather table (14 cities × 120
 hours) and the small embedding model; the model server holds one booster.
 
 ---
@@ -452,17 +486,19 @@ hours) and the small embedding model; the model server holds one booster.
 | `tests/unit/test_serving.py` | serving rows equal training rows for the same inputs; missing weather counted and left NaN; empty Feast features become NaN; AQI category edges; factor names and SHAP aggregation |
 | `tests/unit/test_service.py` | `ForecastService.forecast` with fake inputs: normal forecast (current + change), stale / missing / NaN current value, city unknown to the model, missing history reported, negative forecast clipped, model server down raises the error the API turns into 503, guidance failure keeps the forecast |
 | `tests/unit/test_guidance.py` | all 6 categories × 3 groups parsed with sources; malformed file rejected; search returns the right category and group (local Qdrant in a temporary folder, deterministic test embedder) |
-| `tests/unit/test_api.py` | every endpoint and response schema; 404 for an unknown city; 422 for invalid values; `available: false` carries a reason; dependency failures give 503, not 500 |
-| `tests/unit/test_service.py` (weather, robustness) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept; an empty integer input gives no forecast; a failed online read is retried once, then reported |
+| `tests/unit/test_api.py` | every endpoint and response schema; 404 for an unknown city; 422 for invalid values; `available: false` carries a reason; dependency failures give 503, not 500; "live data store" and "being refreshed" give different messages |
+| `tests/unit/test_settings.py` | `params.yaml` with and without environment overrides; the Redis address replaced while its options are kept (no connection made) |
+| `tests/unit/test_service.py` (weather, robustness) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept; an empty integer input gives no forecast; a failed online read is retried once, then reported; an unreachable Redis is reported as "store down"; no technical error text in the warnings |
 | `tests/unit/test_pipeline.py` | steps, reports and graph from a small `dvc.yaml`; status and reasons from `dvc status` output; throughput from different report layouts; gaps in the collection; newest log problems; caching; a failed `dvc status` |
 | `docs/ui_test_checklist.md` | 28 manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails) |
 
 The tests need no network, no running servers and no model download; they run in the
 pre-commit hook with the rest of the quick suite.
 
-End-to-end check on real data (manual, after starting both servers):
-`/health` all true; `/forecast/Delhi` returns 24 hours, factors and guidance;
-stopping the model server turns `/forecast` into 503.
+End-to-end checks on real data in the containers (manual): `/health` all true;
+`/forecast/Delhi` returns 24 hours, factors and guidance; then each part stopped or
+crashed in turn (model server, Redis, Qdrant, backend crash, backend stopped, whole
+system) — results in `docs/architecture.md` §5.
 
 ---
 
@@ -470,7 +506,5 @@ stopping the model server turns `/forecast` into 503.
 
 | Stage | Change |
 |---|---|
-| 7 | Frontend calls this API (CORS already allows `GET` from any origin) |
-| 8 | Model server, backend and Qdrant in separate containers (Docker Compose); Qdrant client switches from a local folder to `QdrantClient(url=…)`; Feast online store to Redis |
 | 9 | Airflow refreshes the online store after each collection run and restarts the servers when a new champion is registered |
 | 10 | Request and latency metrics from the backend; live-versus-forecast error tracking from the saved weather snapshots and later actuals |

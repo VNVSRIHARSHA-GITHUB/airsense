@@ -122,7 +122,9 @@ This usually resolves itself when new data arrives (normally within an hour). A 
 | *Loading the forecast for …* | The forecast is being calculated (usually under a second; the first request after a restart can take a few seconds). | Wait. |
 | *Notes: live weather forecast unavailable; using the forecast fetched …* | The weather service could not be reached, so a weather forecast saved a few hours earlier is used. | Nothing; the forecast is still valid but may be slightly less accurate. |
 | *Could not load the forecast … Model server unavailable* | The forecasting model is not running. | Try again later; operators see this on the Pipeline console. |
-| Red bar at the top: *The forecast service … cannot be reached* | The website cannot reach the AirSense service. | Check your connection and use Refresh; if it persists, contact the operator. |
+| *Could not load the forecast … Live data store unavailable* (or red bar *Could not load the city list: Live data store unavailable*) | The store holding the latest measurements is not running. | Use Refresh in a moment; if it persists, contact the operator. |
+| *Notes: health advice service unavailable right now* | The forecast is shown, but the advice texts cannot be looked up. | Nothing; the forecast is still valid. Advice returns when the service is back. |
+| Red bar at the top: *Could not load the city list: The AirSense service (backend) is not running or not answering* (or *cannot be reached*) | The website cannot reach the AirSense service. | Check your connection and use Refresh; if it persists, contact the operator. |
 
 ---
 
