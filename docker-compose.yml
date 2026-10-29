@@ -15,11 +15,10 @@
 # project root:
 #   AIRSENSE_TAG=$(git rev-parse --short HEAD) docker compose up -d --build
 
+# Backend and model server run the same image. Only model-server builds it:
+# two services building one image tag in parallel collide ("already exists").
 x-app: &app
   image: airsense-app:${AIRSENSE_TAG:-dev}
-  build:
-    context: .
-    dockerfile: docker/app.Dockerfile
   restart: unless-stopped
   environment: &app-env
     AIRSENSE_ROOT: ${PWD}
@@ -55,6 +54,9 @@ services:
 
   model-server:
     <<: *app
+    build:
+      context: .
+      dockerfile: docker/app.Dockerfile
     command: ["bash", "model_server/serve.sh"]
     environment:
       <<: *app-env
@@ -70,6 +72,7 @@ services:
 
   backend:
     <<: *app
+    pull_policy: never  # built by model-server above, never from a registry
     environment:
       <<: *app-env
       MODEL_SERVER_URL: http://model-server:5002
