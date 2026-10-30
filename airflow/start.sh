@@ -22,5 +22,9 @@ export AIRFLOW__CORE__EXECUTION_API_SERVER_URL=http://localhost:8081/execution/
 export AIRFLOW__CORE__DEFAULT_TIMEZONE=Asia/Kolkata            # schedules and UI in IST
 export AIRSENSE_PROJECT="$PROJECT"                             # read by the DAGs
 
+# `airflow standalone` starts each component by running `airflow` again, found
+# through PATH, so Airflow's environment must come first in PATH.
+export PATH="$AIRFLOW_VENV/bin:$PATH"
+
 mkdir -p "$AIRFLOW_HOME"
-exec "$AIRFLOW_VENV/bin/airflow" standalone
+exec airflow standalone
