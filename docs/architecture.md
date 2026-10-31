@@ -14,18 +14,21 @@ input contract) are in `docs/lld.md`; data sources and features in
 
 ![AirSense architecture](images/architecture.png)
 
-The diagram source (Mermaid) is in §8; `docs/images/architecture.png` is rendered
+The diagram source (Mermaid) is in §9; `docs/images/architecture.png` is rendered
 from it.
 
 The system has two halves that meet only through files and stores:
 
 | Half | Runs | What it does | Output |
 |---|---|---|---|
-| **Pipeline** (offline) | on the laptop, in the project's Python environment; DVC decides what to run (Airflow schedules it from Stage 9) | collects live measurements, validates and processes data, builds features, trains, checks and registers the model, builds the guidance index | data and feature files, the registered **champion** model, the online features (Redis), the guidance collection (Qdrant) |
+| **Pipeline** (offline) | on the laptop, in the project's Python environment; **Airflow** schedules it (three workflows), **DVC** decides what actually needs re-running | collects live measurements, validates and processes data, builds features, trains, checks and registers the model, builds the guidance index | data and feature files, the registered **champion** model, the online features (Redis), the guidance collection (Qdrant) |
 | **Serving** (online) | five Docker containers | answers users: the latest values, a 24-hour forecast, why, and what to do | the web pages and the REST API |
 
 The serving system never trains or rewrites data; the pipeline never answers users.
-A new model or new features reach users without changing serving code.
+A new model or new features reach users without changing serving code. Since Stage 9
+nothing has to be started by hand: Airflow collects every 30 minutes, refreshes the
+live features, retrains weekly and serves a new champion, and versions the data daily
+(§5).
 
 ---
 
@@ -33,7 +36,7 @@ A new model or new features reach users without changing serving code.
 
 | Component | Technology | Role |
 |---|---|---|
-| Live collector | Python (`datagov_client.py`), every 30 min | Saves the CPCB real-time feed (data.gov.in) as one CSV per run |
+| Live collector | Python (`datagov_client.py`), every 30 min | Saves the CPCB real-time feed (data.gov.in) as one CSV per run (run by Airflow; until Stage 9 by cron) |
 | Data validation | Great Expectations, Python checks | Rejects broken raw data, checks processed data and weather |
 | Processing | PySpark (history), pandas (live) | Station → city hourly values, 24-hour averages |
 | Features | pandas, **Feast** | Lags, changes, rolling values, calendar and weather features; offline (Parquet, DuckDB) and online (Redis) |
@@ -41,7 +44,8 @@ A new model or new features reach users without changing serving code.
 | Quality gate | Python | Five checks against baselines before a model may serve |
 | Registry | MLflow Model Registry | Versions; the `champion` alias marks the model that serves |
 | Guidance index | sentence-transformers, **Qdrant** | Health advice per AQI category and user group, found by semantic search |
-| Pipeline control | **DVC** (`dvc.yaml`, 14 stages) | Runs only what changed; versions data and models by checksum |
+| Pipeline control | **DVC** (`dvc.yaml`, 14 stages) | Runs only what changed; versions data and models by checksum; live snapshots versioned daily (`dvc add` + `dvc push`) |
+| Orchestration | **Apache Airflow 3.3** (own environment, `airflow standalone`) | Schedules the pipeline as three workflows (DAGs), with retries, logs and a web UI on port 8081 |
 | Model server | `mlflow models serve` | Serves the champion over REST (`/invocations`) |
 | Backend | FastAPI | The application: freshness check, weather, model input, AQI, explanation (SHAP), guidance, pipeline status |
 | Frontend | HTML, CSS, JavaScript, Chart.js, nginx | Forecast page for the public, Pipeline console for operators |
@@ -52,7 +56,8 @@ A new model or new features reach users without changing serving code.
 
 **Pipeline (offline), in `dvc.yaml` order:**
 
-1. The collector saves `data/raw/live/datagov/<UTC date>/<HHMM>.csv` every 30 minutes.
+1. Airflow's `airsense_live` workflow runs the collector every 30 minutes; it saves
+   `data/raw/live/datagov/<UTC date>/<HHMM>.csv`.
    History comes from the CPCB archive (Kaggle) in `data/raw/cpcb/`; past weather from
    Open-Meteo.
 2. `validate_raw` → `process_history` and `process_live` → `validate_processed`:
@@ -61,8 +66,9 @@ A new model or new features reach users without changing serving code.
    `build_features_live`: feature tables in `data/features/`.
 4. `build_training` → `train` → `gate` → `register`: the model in MLflow; if it passes
    the gate and beats the current champion, it becomes the new champion.
-5. `feast_online` writes the newest features of each city to **Redis**;
-   `guidance_index` embeds the advice texts into **Qdrant**.
+5. `feast_online` writes the newest features of each city to **Redis** (every 30
+   minutes, by `airsense_live`); `guidance_index` embeds the advice texts into
+   **Qdrant**.
 
 **Serving (online), one forecast request:**
 
@@ -85,8 +91,13 @@ A new model or new features reach users without changing serving code.
 Laptop (Ubuntu, CPU only)
 │
 ├── Project folder ~/projects/airsense  (Git + DVC)
-│     pipeline code, data, mlruns/ + mlflow.db (models), feature_repo/ (Feast)
+│     pipeline code, data, mlruns/ + mlflow.db (models), feature_repo/ (Feast),
+│     airflow/dags/ (the three workflows)
 │     └── Python environment (.venv): DVC pipeline, collector, tests
+│
+├── Airflow 3.3  (own environment ~/airflow-venv; files in ~/airflow-airsense)
+│     airflow standalone: scheduler, DAG processor, triggerer, web UI 127.0.0.1:8081
+│     tasks run the pipeline in the project's .venv  (bash airflow/start.sh)
 │
 └── Docker Compose project "airsense"  (one private network)
       frontend      nginx              0.0.0.0:8080   ← the only public port
@@ -126,7 +137,10 @@ Laptop (Ubuntu, CPU only)
   port; Redis and Qdrant are reachable from the laptop only, so the pipeline can fill
   them.
 - **The pipeline stays outside the containers.** It needs Spark, the full data and the
-  laptop's environment; Airflow will schedule it in Stage 9.
+  laptop's environment. Airflow (Stage 9) schedules it from its own environment:
+  Airflow's pinned packages (FastAPI, pydantic, alembic, grpcio, …) differ from the
+  pipeline's, so installing it into `.venv` would have changed 16 of the pipeline's
+  tested packages; its tasks call the project's `.venv` instead.
 - **Safe by default.** Containers run as a normal user (uid 1000, not root); secrets
   (`.env`) are never copied into an image (`.dockerignore`); every container restarts
   by itself after a crash (`restart: unless-stopped`) and starts only when what it
@@ -134,7 +148,31 @@ Laptop (Ubuntu, CPU only)
 
 ---
 
-## 5. Behaviour when a part fails
+## 5. Scheduled workflows (Airflow)
+
+Three DAGs in `airflow/dags/`. Every pipeline step is one task running
+`dvc repro -s <stage>` in the project folder with `.venv` activated: DVC still decides
+whether anything changed and keeps `dvc.lock` correct; Airflow adds the schedule, the
+order, retries, logs and the graph. All DVC tasks share a pool with **one slot**,
+because DVC locks the repository (two DVC commands at once would fail).
+
+| Workflow | Schedule | Tasks | Notes |
+|---|---|---|---|
+| `airsense_live` | every 30 min, at :05 and :35 | `collect` → `process_live` → `validate_processed` → `build_features_live` → `feast_online` | replaced the collector's cron job; `validate_processed` is a gate: bad data never reaches Redis; `feast_online` checks online = offline features |
+| `airsense_retrain` | Sundays 13:00 IST, or started manually | `champion_before` → `build_training` → `train` → `gate` → `register` → `champion_changed` → `restart_serving` | unchanged data: every step is skipped by DVC in seconds; a failed gate stops the run and the champion keeps serving; the containers are restarted only if the champion changed, then `/health` must report the new version |
+| `airsense_housekeeping` | daily at 23:15 IST | `version_live_data` → `push_data` → `commit_checkpoint` → `gc_dvc_cache`; `clean_airflow_logs`, `prune_old_images` | live snapshots (CPCB feed, Open-Meteo forecasts) cannot be downloaded again: `dvc add` + `dvc push` daily; one Git commit per day ("Daily data checkpoint"), only for data versions and reports; `dvc gc` drops the 30-minute intermediates |
+
+- **Missed runs are not replayed** (`catchup=False`): the feed only has the current
+  hour, so a replay would fetch "now" several times. One run at a time per workflow.
+- **Failures:** each task retries (training does not: it is memory-heavy); a failed run
+  is red in Airflow and on the Pipeline console.
+- **Pipeline console:** when a run ends, the DAG writes its result to
+  `logs/airflow_runs.json`; the console shows each workflow's latest run with a link to
+  Airflow. No Airflow login or network access is needed by the backend.
+
+---
+
+## 6. Behaviour when a part fails
 
 Tested by stopping or crashing each part while the pages were open:
 
@@ -149,7 +187,7 @@ Tested by stopping or crashing each part while the pages were open:
 
 ---
 
-## 6. Running it
+## 7. Running it
 
 Prerequisites: Docker with the Compose plugin; the project folder with the pipeline
 run at least once (`dvc repro`), so a champion model exists. Run every command from
@@ -167,6 +205,24 @@ dvc repro -f guidance_index            # first start only: advice into Qdrant
 Open http://localhost:8080 (forecast) and http://localhost:8080/pipeline.html
 (console); API documentation at http://127.0.0.1:8000/docs.
 
+**Start the scheduler** (its own terminal). Airflow is installed once, in its own
+environment outside the project:
+
+```bash
+uv venv ~/airflow-venv --python 3.12
+uv pip install --python ~/airflow-venv/bin/python "apache-airflow==3.3.2" \
+  --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.3.2/constraints-3.12.txt"
+```
+
+Then, each time:
+
+```bash
+bash airflow/start.sh                  # Airflow UI at http://localhost:8081 (user admin)
+bash airflow/cli.sh dags list-import-errors
+```
+
+New workflows start paused: switch each on in the Airflow UI (toggle next to its name).
+
 `--build` is needed only when code, the Dockerfiles or `requirements-serve.txt`
 changed. To start the images that already exist without building, give their tag:
 `AIRSENSE_TAG=<tag> docker compose up -d` (`docker images` lists the tags).
@@ -178,8 +234,11 @@ changed. To start the images that already exist without building, give their tag
 | Status of all containers | `docker compose ps` |
 | Logs of one service | `docker compose logs backend --tail 80` (or `model-server`, `frontend`, …) |
 | Health of the dependencies | `curl -s 127.0.0.1:8000/health` |
-| Refresh live features | `dvc repro feast_online` (Airflow from Stage 9) |
-| Serve a newly registered champion | `docker compose restart model-server backend` |
+| Refresh live features | automatic every 30 min (`airsense_live`); by hand: Trigger it in Airflow |
+| Retrain and serve a better model | automatic on Sundays (`airsense_retrain`); by hand: Trigger it; it restarts the containers only if the champion changed |
+| Serve a champion registered outside Airflow | `docker compose restart model-server backend` |
+| Back up the live data | automatic daily (`airsense_housekeeping`); by hand: `dvc add data/raw/live/datagov data/raw/live/openmeteo && dvc push` |
+| Run any Airflow command | `bash airflow/cli.sh <command>`, e.g. `dags list`, `dags trigger airsense_live` |
 | Stop everything (data kept) | `docker compose down` |
 | Remove old image versions | `KEEP=$(git rev-parse --short HEAD); docker images --format '{{.Repository}}:{{.Tag}}' \| grep -E '^airsense-(app\|frontend):' \| grep -v ":$KEEP$" \| xargs -r docker rmi` |
 
@@ -196,17 +255,21 @@ Run on the laptop without Docker (development): see `docs/lld.md` §7.
 
 ---
 
-## 7. Known limitations
+## 8. Known limitations
 
 - **Collection only while the laptop is on.** The live feed gives only the current
   hour, so hours when the laptop was off or offline are missing for good. Forecasts
-  then lack some history inputs (the page lists them under "Notes").
+  then lack some history inputs (the page lists them under "Notes"). After the laptop
+  wakes, a pending run and the current one may both collect (two snapshots a minute
+  apart); processing removes the repeated readings.
+- **Airflow in standalone mode** (one process, SQLite database): meant for a single
+  machine, as here; a server would run its components separately on PostgreSQL.
 - **Single machine.** All services run on one laptop; no replication or load balancing.
   The containers make moving to a server a configuration change, not a rewrite.
 
 ---
 
-## 8. Diagram source
+## 9. Diagram source
 
 ```mermaid
 flowchart LR
@@ -216,7 +279,7 @@ flowchart LR
         OM["Open-Meteo<br/>weather"]
     end
 
-    subgraph pipeline ["Pipeline · laptop · DVC (Airflow from Stage 9)"]
+    subgraph pipeline ["Pipeline · laptop · scheduled by Airflow · run by DVC"]
         COL["Collector<br/>every 30 min"]
         VAL["Validation<br/>Great Expectations"]
         PROC["Processing<br/>Spark / pandas"]
@@ -242,6 +305,9 @@ flowchart LR
     end
 
     USER(["Browser<br/>public + operators"])
+    AF{{"Airflow<br/>3 workflows"}}
+    AF -. "every 30 min / weekly / daily" .-> COL
+    AF -. "restart on new champion" .-> MS
 
     CPCB --> COL
     HIST --> PROC

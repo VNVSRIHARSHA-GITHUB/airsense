@@ -48,6 +48,7 @@ Manual checks of the two web pages, run in a browser against the real system. Th
 | C7 | Warnings | Compare with the end of `logs/collector.log` | Latest warnings and errors listed, newest first; no API key visible | |
 | C8 | Backend down | Stop the backend, press Refresh | Red bar explaining the status cannot be loaded | |
 | C9 | Phone width | Open at 400 px | Blocks stacked; graph can be scrolled sideways; table scrolls sideways; long log lines wrap | |
+| C10 | Scheduled workflows | After an Airflow run, press Refresh; compare with the Airflow UI | One row per workflow that has run: latest run time, Succeeded/Failed as in Airflow; "Open in Airflow" opens that workflow; with Airflow stopped for over 45 min, *airsense_live* turns amber | |
 
 ## Result summary
 

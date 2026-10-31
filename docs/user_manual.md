@@ -153,12 +153,13 @@ This usually resolves itself when new data arrives (normally within an hour). A 
 
 ![Pipeline console](images/manual_console.png)
 
-The **Pipeline console** shows whether the system behind the forecasts is healthy. It reads only; it cannot start or change anything. It updates every minute.
+The **Pipeline console** shows whether the system behind the forecasts is healthy. It reads only; it cannot start or change anything. It updates every minute. The scheduler (Airflow, at http://localhost:8081) runs the pipeline; the console shows what it did.
 
 | Section | What it answers | What to do when it is not green |
 |---|---|---|
-| **Pipeline steps** (summary) | Are all steps up to date? | "*n* need a re-run": run `dvc repro` (from Stage 9, the scheduler does this). |
-| **Live data collection** (summary and timeline) | Are new measurements arriving every 30 minutes? Pink cells are missed half-hours. | Check that the computer was on and connected; check the collector log. |
+| **Pipeline steps** (summary) | Are all steps up to date? | "*n* need a re-run": normally fixed by the next scheduled run; to run now, Trigger the workflow in Airflow. |
+| **Scheduled workflows (Airflow)** | Did the three automatic workflows run, and did they succeed? *airsense_live* (every 30 min: collect, process, refresh live data), *airsense_retrain* (Sundays: retrain and serve a better model), *airsense_housekeeping* (daily: back up data, clean up). | **Failed**: open it in Airflow ("Open in Airflow"), click the red box, read *Logs*. Amber "no run for a while": Airflow is not running (start it with `bash airflow/start.sh`) or the computer was asleep. |
+| **Live data collection** (summary and timeline) | Are new measurements arriving every 30 minutes? Pink cells are missed half-hours. | Check that the computer was on and connected and that Airflow is running; check the collector log. |
 | **Live model** | Which model version serves forecasts, and how accurate it was on test data. | — |
 | **Quality gate** | Did the live model pass all 5 automatic checks before it was allowed to serve? | A failed check means a new model was not promoted; see the gate report. |
 | **Pipeline graph** | All 14 steps and which step feeds which. Green = up to date, amber = inputs changed (needs a re-run), grey = runs on every pipeline run. Select a step to see its latest report and the reason it changed. | — |

@@ -176,7 +176,8 @@ When no forecast is possible:
   - `edges[]`: `[from, to]` pairs, derived from `dvc.yaml` (an output of one step is an input of the other);
   - `throughput[]`: `{stage, rows, seconds, rows_per_second}` from each step's report;
   - `collection`: last snapshot time and age, snapshots in the last 24 h (48 expected), gaps longer than 45 min, snapshot times;
-  - `recent_problems[]`: the newest WARNING/ERROR lines of `logs/*.log`.
+  - `recent_problems[]`: the newest WARNING/ERROR lines of `logs/*.log`;
+  - `workflows[]`: `{dag_id, state, run_type, end_utc, minutes_ago, url}`, the latest run of each Airflow workflow, read from `logs/airflow_runs.json` (written by the DAGs when a run ends; Stage 9), and `airflow_url` for the links.
   The result is cached for `serving.pipeline_cache_seconds` (60), so console refreshes do not run `dvc status` each time.
 
 ---
@@ -237,6 +238,11 @@ a city's row atomically. The connection string in `feature_store.yaml` carries
 client retries a failed connection three times with growing waits (about 7 s per
 read), so a stopped Redis kept a page waiting for a minute. The containers replace
 only the address (`REDIS_CONNECTION=redis:6379`); the options are kept.
+`skip_dedup: true` (Stage 9): Feast's Redis writer otherwise skips a row whose time
+equals the stored one, so a late station that revised the newest hour never reached
+Redis and the online/offline check in `feast_online` failed. Safe here: materialization
+writes only the newest row per city, and one writer runs at a time (Airflow's `dvc`
+pool). `feast_online` runs every 30 minutes (Airflow `airsense_live`).
 
 ### 3.2 Weather
 
@@ -368,7 +374,7 @@ disables guidance. Qdrant runs as a server, so the index can be rebuilt
 several requests at once (`/cities` and `/forecast`). With the earlier SQLite online
 store two simultaneous reads broke its shared connection (`IndexError`), so online
 reads take turns behind a lock; a read takes about 1 ms, so the lock is kept. The online store is also rewritten by
-another process (`dvc repro feast_online`), which a lock cannot prevent: a failed
+another process (`feast_online`, every 30 minutes since Stage 9), which a lock cannot prevent: a failed
 read is retried once after 0.5 s, and a second failure becomes a 503 ("Live data
 (being refreshed) unavailable") instead of an error.
 
@@ -418,6 +424,7 @@ moment"); the API's messages say only what is unavailable.
 | `serving.weather_retry_minutes` | 5 | wait after a failed weather call |
 | `serving.weather_timeout_seconds` | 10 | one Open-Meteo attempt per request, then the saved forecast |
 | `serving.pipeline_cache_seconds` | 60 | console data rebuilt at most once a minute |
+| `serving.airflow_url` | `http://localhost:8081` | Airflow UI, linked from the console's workflows panel |
 | `serving.dvc_status_timeout_seconds` | 60 | `dvc status` for the console gives up after this |
 | `serving.weather_past_days` / `weather_forecast_days` | 2 / 3 | hours needed for "now", 24-hour rain and *t* + 24 |
 | `serving.top_factors` | 4 | factors in the explanation |
@@ -447,7 +454,7 @@ Redis and Qdrant are needed in both cases; Docker Compose can start just those t
 
 ```bash
 docker compose up -d redis qdrant               # online store and guidance index
-dvc repro feast_online                          # refresh live features (Stage 9: Airflow)
+dvc repro feast_online                          # refresh live features (Airflow does this every 30 min)
 dvc repro guidance_index                        # once, and after editing guidance_docs/
 bash model_server/serve.sh                      # terminal 1: model server on port 5002
 uvicorn main:app --app-dir backend --port 8000  # terminal 2: backend on port 8000
@@ -489,8 +496,8 @@ hours) and the small embedding model; the model server holds one booster.
 | `tests/unit/test_api.py` | every endpoint and response schema; 404 for an unknown city; 422 for invalid values; `available: false` carries a reason; dependency failures give 503, not 500; "live data store" and "being refreshed" give different messages |
 | `tests/unit/test_settings.py` | `params.yaml` with and without environment overrides; the Redis address replaced while its options are kept (no connection made) |
 | `tests/unit/test_service.py` (weather, robustness) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept; an empty integer input gives no forecast; a failed online read is retried once, then reported; an unreachable Redis is reported as "store down"; no technical error text in the warnings |
-| `tests/unit/test_pipeline.py` | steps, reports and graph from a small `dvc.yaml`; status and reasons from `dvc status` output; throughput from different report layouts; gaps in the collection; newest log problems; caching; a failed `dvc status` |
-| `docs/ui_test_checklist.md` | 28 manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails) |
+| `tests/unit/test_pipeline.py` | steps, reports and graph from a small `dvc.yaml`; status and reasons from `dvc status` output; throughput from different report layouts; gaps in the collection; newest log problems; caching; a failed `dvc status`; Airflow workflows from the runs file (order, age, link; nothing shown without Airflow) |
+| `docs/ui_test_checklist.md` | 29 manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails) |
 
 The tests need no network, no running servers and no model download; they run in the
 pre-commit hook with the rest of the quick suite.
@@ -506,5 +513,4 @@ system) — results in `docs/architecture.md` §5.
 
 | Stage | Change |
 |---|---|
-| 9 | Airflow refreshes the online store after each collection run and restarts the servers when a new champion is registered |
 | 10 | Request and latency metrics from the backend; live-versus-forecast error tracking from the saved weather snapshots and later actuals |

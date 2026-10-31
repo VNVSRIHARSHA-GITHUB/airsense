@@ -9,7 +9,7 @@ This document describes every data source used by AirSense: what it contains, it
 | Source | Role in the pipeline | Access | Update frequency | Versioned with | Licence |
 |---|---|---|---|---|---|
 | CPCB historical data (Kaggle) | Training history (PM2.5) | Kaggle API (`kaggle datasets download`) | Static snapshot (2010-01-01 to 2023-03-31) | DVC (`data/raw/cpcb.dvc`) | CC BY-NC-SA 4.0 |
-| CPCB real-time feed (data.gov.in) | Live inputs and "actual" measurements for monitoring | REST API, API key in `.env` | Hourly | Collected every 30 min (cron); DVC versioning planned for Stage 9 | GODL (India) |
+| CPCB real-time feed (data.gov.in) | Live inputs and "actual" measurements for monitoring | REST API, API key in `.env` | Hourly | Collected every 30 min by Airflow (until Stage 9 by cron); versioned daily with DVC since 31 Oct 2026 | GODL (India) |
 | Open-Meteo weather | Weather features: archive for training, forecast for serving | REST API, no key | Hourly; archive back to 1940 (≈ 5-day delay) | Archive: DVC stage `fetch_weather` (`data/raw/weather/archive/`); forecast: fetched at serving time (Stage 6) | CC BY 4.0 |
 
 All three sources measure or model the same quantities at the same locations, so the model sees consistent inputs during training and serving (design choice 1A: "CPCB measurements throughout").
@@ -64,7 +64,7 @@ All three sources measure or model the same quantities at the same locations, so
 - **Endpoint:** `https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69` (resource ID stored in `params.yaml`).
 - **Authentication:** personal API key, stored only in `.env` (git-ignored); `.env.example` documents the variable name.
 - **Licence:** Government Open Data License – India (GODL), as published on data.gov.in: free use, including derived works, with attribution to the source.
-- **Client:** `src/airsense/ingestion/datagov_client.py`, run every 30 minutes (minutes 5 and 35) by cron until Airflow takes over in Stage 9. Output: `data/raw/live/datagov/<UTC date>/<HHMM>.csv`. Processed by `src/airsense/processing/process_live.py`.
+- **Client:** `src/airsense/ingestion/datagov_client.py`, run every 30 minutes (minutes 5 and 35) by the Airflow workflow `airsense_live` (until Stage 9 by cron). Snapshots and the saved Open-Meteo forecasts are versioned daily (`dvc add` + `dvc push`, workflow `airsense_housekeeping`), since they cannot be downloaded again. Output: `data/raw/live/datagov/<UTC date>/<HHMM>.csv`. Processed by `src/airsense/processing/process_live.py`.
 
 ### Format
 - One record per **station × pollutant**: `country, state, city, station, last_update, latitude, longitude, pollutant_id, min_value, max_value, avg_value`. The collector adds `fetched_at_utc`.
