@@ -150,6 +150,42 @@ function selectStage(name) {
   );
 }
 
+// ---------- scheduled workflows (Airflow) ----------
+
+const WORKFLOWS = {
+  airsense_live: { what: "Collect live data, process, validate, refresh the live features", when: "Every 30 min, at :05 and :35", staleMin: 45 },
+  airsense_retrain: { what: "Retrain, quality gate, register; serve a new champion", when: "Every Sunday at 13:00 IST, or started manually", staleMin: null },
+  airsense_housekeeping: { what: "Version the live data, daily Git checkpoint, clean-up", when: "Daily at 23:15 IST", staleMin: null },
+};
+const RUN_STATE = { success: ["ok", "Succeeded"], failed: ["bad", "Failed"], running: ["attention", "Running"] };
+
+function renderWorkflows(d) {
+  const table = document.getElementById("workflows");
+  const runs = d.workflows || [];
+  if (!runs.length) {
+    table.replaceChildren(el("caption", { class: "hint" },
+      "No Airflow runs recorded yet. Start Airflow with: bash airflow/start.sh"));
+    return;
+  }
+  table.replaceChildren(
+    el("thead", {}, el("tr", {}, ["Workflow", "What it does", "Schedule", "Latest run", "Result", ""].map((h) => el("th", {}, h)))),
+    el("tbody", {}, ...runs.map((w) => {
+      const meta = WORKFLOWS[w.dag_id] || { what: "", when: "", staleMin: null };
+      const [cls, label] = RUN_STATE[w.state] || ["neutral", w.state || "unknown"];
+      const stale = meta.staleMin && w.minutes_ago != null && w.minutes_ago > meta.staleMin;
+      return el("tr", {},
+        el("td", {}, el("code", {}, w.dag_id)),
+        el("td", {}, meta.what),
+        el("td", {}, meta.when),
+        el("td", {}, w.end_utc ? `${fmtTimeIST(w.end_utc)} IST (${fmtAgo(w.minutes_ago)})` : "—",
+          stale ? el("div", { class: "hint" }, "No run for a while: is Airflow running?") : ""),
+        el("td", {}, el("span", { class: `pill ${stale ? "attention" : cls}` }, label)),
+        el("td", {}, w.url ? el("a", { href: w.url, target: "_blank", rel: "noopener" }, "Open in Airflow") : ""),
+      );
+    })),
+  );
+}
+
 // ---------- live collection ----------
 
 function renderLive(d) {
@@ -250,6 +286,7 @@ async function refresh() {
     showBanner("");
     document.getElementById("asof").textContent = `Status as of ${fmtTimeIST(d.generated_at_utc)} IST`;
     renderSummary(d);
+    renderWorkflows(d);
     renderGraph(d);
     renderLive(d);
     renderModel(d);
