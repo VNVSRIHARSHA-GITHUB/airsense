@@ -1,9 +1,9 @@
 {
-  "checked_at_utc": "2026-10-31T05:39:15.212577+00:00",
+  "checked_at_utc": "2026-10-31T06:44:47.495075+00:00",
   "materialize_days": 7,
-  "materialize_seconds": 0.42,
-  "online_read_ms_median": 1.16,
-  "online_read_ms_max": 1.56,
+  "materialize_seconds": 0.45,
+  "online_read_ms_median": 1.19,
+  "online_read_ms_max": 1.43,
   "cities_in_online_store": 14,
   "missing_cities": [],
   "max_live_age_hours": 4,
@@ -25,24 +25,5 @@
   },
   "stale_cities": {},
   "online_offline_checked_cities": 14,
-  "online_offline_differences": [
-    {
-      "city": "Kolkata",
-      "feature": "pm25_mean_72h",
-      "online": 39.42757936507937,
-      "offline": 39.364087301587304
-    },
-    {
-      "city": "Kolkata",
-      "feature": "pm25_24h",
-      "online": 21.666666666666668,
-      "offline": 20.142857142857142
-    },
-    {
-      "city": "Kolkata",
-      "feature": "n_stations_24h",
-      "online": 6.0,
-      "offline": 7.0
-    }
-  ]
+  "online_offline_differences": []
 }
