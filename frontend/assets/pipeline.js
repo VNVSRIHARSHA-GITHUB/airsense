@@ -141,7 +141,7 @@ function selectStage(name) {
   const rows = s.report ? Object.entries(s.report) : [];
   document.getElementById("stage-detail").replaceChildren(
     el("h3", {}, s.name, " ", el("span", { class: `pill ${st.cls}` }, st.label)),
-    s.reasons.length ? el("p", { class: "reasons" }, "Why: ", s.reasons.join("; ")) : null,
+    s.reasons.length ? el("p", { class: "reasons" }, "Why: ", s.reasons.join("; ")) : "",  // not null: replaceChildren would show "null"
     el("dl", { class: "kv" },
       el("dt", {}, "Command"), el("dd", {}, el("code", { class: "cmd" }, s.cmd)),
       el("dt", {}, "Last run"), el("dd", {}, s.last_run_utc ? `${fmtTimeIST(s.last_run_utc)} IST (${fmtAgo(minutesSince(s.last_run_utc))})` : "—"),
