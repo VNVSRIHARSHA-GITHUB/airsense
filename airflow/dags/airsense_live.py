@@ -15,7 +15,7 @@ from airflow.providers.standard.operators.bash import BashOperator
 from airflow.sdk import DAG
 
 sys.path.insert(0, str(Path(__file__).parent))  # the shared helper next to this file
-from airsense_common import dvc_stage, in_project
+from airsense_common import dvc_stage, in_project, record_run
 
 with DAG(
     dag_id="airsense_live",
@@ -27,6 +27,8 @@ with DAG(
     dagrun_timeout=timedelta(minutes=29),
     tags=["airsense", "live"],
     doc_md=__doc__,
+    on_success_callback=record_run,  # last run for the Pipeline console
+    on_failure_callback=record_run,
 ) as dag:
     # The collector retries pages itself (3 attempts); output also goes to
     # logs/collector.log, which the Pipeline console reads.

@@ -127,6 +127,7 @@ serving:                         # Stage 6 backend
   top_factors: 4                 # factors shown in the explanation
   pipeline_cache_seconds: 60     # console data rebuilt at most once a minute
   dvc_status_timeout_seconds: 60 # dvc status for the console gives up after this
+  airflow_url: http://localhost:8081   # Airflow UI, linked from the console (Stage 9)
 
 guidance:                        # Stage 6 health guidance search
   docs_dir: guidance_docs

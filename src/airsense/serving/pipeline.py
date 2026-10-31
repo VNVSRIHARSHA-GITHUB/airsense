@@ -7,7 +7,8 @@ except `dvc status`, which only compares checksums:
   - data/interim/*.json each stage's report: time, rows, seconds, checks, warnings;
   - gate_report.json, registry.json   the current model's checks and promotion;
   - data/raw/live/datagov/<date>/<HHMM>.csv   live collection health (names = UTC);
-  - logs/*.log          recent warnings and errors.
+  - logs/*.log          recent warnings and errors;
+  - logs/airflow_runs.json  the last run of each Airflow DAG (written by the DAGs).
 The result is cached for `pipeline_cache_seconds`, so a console refresh does not
 run `dvc status` again.
 """
@@ -32,6 +33,7 @@ log = logging.getLogger(__name__)
 
 SNAPSHOT_DIR = Path("data/raw/live/datagov")
 LOG_DIR = Path("logs")
+AIRFLOW_RUNS = LOG_DIR / "airflow_runs.json"
 LOG_LINE = re.compile(
     r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\S*\s+(WARNING|ERROR|CRITICAL)\s+(.*)$"
 )
@@ -256,6 +258,33 @@ def recent_problems(
     return sorted(found, key=lambda x: x["time"])[-limit:][::-1]
 
 
+# ---------- scheduled workflows (Airflow) ----------
+
+
+def workflows(runs: dict | None, now: datetime, airflow_url: str | None) -> list[dict]:
+    """Last run of each Airflow DAG, newest first, with its age and a link."""
+    out = []
+    for dag_id, r in (runs or {}).items():
+        end = r.get("end_date") or r.get("start_date")
+        try:
+            age = round((now - datetime.fromisoformat(end)).total_seconds() / 60)
+        except (TypeError, ValueError):
+            age = None
+        out.append(
+            {
+                "dag_id": dag_id,
+                "state": r.get("state"),
+                "run_type": r.get("run_type"),
+                "end_utc": end,
+                "minutes_ago": age,
+                "url": f"{airflow_url.rstrip('/')}/dags/{dag_id}"
+                if airflow_url
+                else None,
+            }
+        )
+    return sorted(out, key=lambda w: w["dag_id"])
+
+
 # ---------- the service ----------
 
 
@@ -269,12 +298,14 @@ class PipelineStatus:
         dvc_timeout_s: float = 60,
         status_fn: Callable[[Path, float], dict] = dvc_status,
         model_info: dict | None = None,
+        airflow_url: str | None = None,
     ):
         self.root = root
         self.cache_seconds = cache_seconds
         self.dvc_timeout_s = dvc_timeout_s
         self.status_fn = status_fn
         self.model_info = model_info or {}
+        self.airflow_url = airflow_url
         self._cache: dict | None = None
         self._at = -1e9
         self._lock = threading.Lock()
@@ -337,4 +368,8 @@ class PipelineStatus:
                 snapshot_times(self.root / SNAPSHOT_DIR), now
             ),
             "recent_problems": recent_problems(self.root / LOG_DIR),
+            "airflow_url": self.airflow_url,
+            "workflows": workflows(
+                read_json(self.root / AIRFLOW_RUNS), now, self.airflow_url
+            ),
         }

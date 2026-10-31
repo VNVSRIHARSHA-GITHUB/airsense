@@ -15,6 +15,7 @@ from airsense.serving.pipeline import (
     stage_status,
     summarise_report,
     throughput,
+    workflows,
 )
 
 DVC_YAML = """
@@ -180,3 +181,31 @@ def test_cache_avoids_rebuilding(project):
     p.get()
     p.get()
     assert len(calls) == 1
+
+
+def test_airflow_workflows_from_runs_file(project):
+    now = datetime(2026, 10, 31, 6, 0, tzinfo=UTC)
+    runs = {
+        "airsense_retrain": {
+            "state": "success",
+            "end_date": "2026-10-31T05:00:00+00:00",
+        },
+        "airsense_live": {
+            "state": "failed",
+            "run_type": "scheduled",
+            "end_date": "2026-10-31T05:40:00+00:00",
+        },
+    }
+    out = workflows(runs, now, "http://localhost:8081/")
+    assert [w["dag_id"] for w in out] == ["airsense_live", "airsense_retrain"]
+    assert out[0]["state"] == "failed" and out[0]["minutes_ago"] == 20
+    assert out[0]["url"] == "http://localhost:8081/dags/airsense_live"
+    assert workflows(None, now, None) == []  # Airflow not set up: nothing shown
+    assert workflows({"x": {"state": "running"}}, now, None)[0]["minutes_ago"] is None
+
+    (project / "logs").mkdir(exist_ok=True)
+    (project / "logs" / "airflow_runs.json").write_text(json.dumps(runs))
+    p = PipelineStatus(root=project, status_fn=lambda r, t: {}, airflow_url="http://a")
+    built = p.build()
+    assert {w["dag_id"] for w in built["workflows"]} == set(runs)
+    assert built["airflow_url"] == "http://a"

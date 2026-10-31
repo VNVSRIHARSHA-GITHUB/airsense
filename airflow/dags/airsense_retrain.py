@@ -23,7 +23,7 @@ from airflow.providers.standard.operators.python import (
 from airflow.sdk import DAG
 
 sys.path.insert(0, str(Path(__file__).parent))  # the shared helper next to this file
-from airsense_common import PROJECT, dvc_stage, in_project
+from airsense_common import PROJECT, dvc_stage, in_project, record_run
 
 REGISTRY_RECORD = Path(PROJECT) / "data" / "interim" / "registry.json"
 
@@ -65,6 +65,8 @@ with DAG(
     max_active_runs=1,
     tags=["airsense", "model"],
     doc_md=__doc__,
+    on_success_callback=record_run,  # last run for the Pipeline console
+    on_failure_callback=record_run,
 ) as dag:
     before = PythonOperator(task_id="champion_before", python_callable=champion_version)
     changed = ShortCircuitOperator(

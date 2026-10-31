@@ -30,6 +30,12 @@
 
     <section class="status-row" id="status-row" aria-label="Summary"></section>
 
+    <section class="panel" aria-labelledby="flows-h">
+      <h2 id="flows-h" class="section-h">Scheduled workflows (Airflow)</h2>
+      <p class="hint">Airflow runs the pipeline on a schedule. Each row shows a workflow's latest run; the link opens it in Airflow for the full graph and logs.</p>
+      <div class="table-wrap"><table class="data" id="workflows"></table></div>
+    </section>
+
     <section class="panel" aria-labelledby="graph-h">
       <h2 id="graph-h" class="section-h">Pipeline steps</h2>
       <p class="hint">Each box is one step of the DVC pipeline; arrows show which step feeds which. Select a step to see its latest report.</p>

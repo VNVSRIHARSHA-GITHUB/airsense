@@ -118,6 +118,7 @@ def create_app(service=None, pipeline=None) -> FastAPI:
             state["pipeline"] = PipelineStatus(
                 cache_seconds=cfg["pipeline_cache_seconds"],
                 dvc_timeout_s=cfg["dvc_status_timeout_seconds"],
+                airflow_url=cfg.get("airflow_url"),
                 model_info=state["service"].model,
             )
         yield
