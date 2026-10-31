@@ -1,29 +1,48 @@
 {
-  "checked_at_utc": "2026-10-29T08:24:39.260669+00:00",
+  "checked_at_utc": "2026-10-31T05:39:15.212577+00:00",
   "materialize_days": 7,
-  "materialize_seconds": 0.78,
-  "online_read_ms_median": 1.19,
-  "online_read_ms_max": 3.56,
+  "materialize_seconds": 0.42,
+  "online_read_ms_median": 1.16,
+  "online_read_ms_max": 1.56,
   "cities_in_online_store": 14,
   "missing_cities": [],
   "max_live_age_hours": 4,
   "live_age_hours": {
-    "Ahmedabad": 1.9,
-    "Bengaluru": 1.9,
-    "Chandigarh": 1.9,
-    "Chennai": 1.9,
-    "Delhi": 1.9,
-    "Guwahati": 1.9,
-    "Hyderabad": 1.9,
-    "Jaipur": 1.9,
-    "Kanpur": 1.9,
-    "Kolkata": 1.9,
-    "Lucknow": 1.9,
-    "Mumbai": 1.9,
-    "Patna": 1.9,
-    "Pune": 1.9
+    "Ahmedabad": 2.2,
+    "Bengaluru": 2.2,
+    "Chandigarh": 2.2,
+    "Chennai": 2.2,
+    "Delhi": 2.2,
+    "Guwahati": 2.2,
+    "Hyderabad": 2.2,
+    "Jaipur": 2.2,
+    "Kanpur": 2.2,
+    "Kolkata": 2.2,
+    "Lucknow": 2.2,
+    "Mumbai": 2.2,
+    "Patna": 2.2,
+    "Pune": 2.2
   },
   "stale_cities": {},
   "online_offline_checked_cities": 14,
-  "online_offline_differences": []
+  "online_offline_differences": [
+    {
+      "city": "Kolkata",
+      "feature": "pm25_mean_72h",
+      "online": 39.42757936507937,
+      "offline": 39.364087301587304
+    },
+    {
+      "city": "Kolkata",
+      "feature": "pm25_24h",
+      "online": 21.666666666666668,
+      "offline": 20.142857142857142
+    },
+    {
+      "city": "Kolkata",
+      "feature": "n_stations_24h",
+      "online": 6.0,
+      "offline": 7.0
+    }
+  ]
 }

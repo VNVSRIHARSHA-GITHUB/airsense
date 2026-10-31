@@ -1,0 +1,6 @@
+outs:
+- md5: 5d0b3c6e2031c219dea30a4c22f1400f.dir
+  size: 17929776
+  nfiles: 234
+  hash: md5
+  path: datagov

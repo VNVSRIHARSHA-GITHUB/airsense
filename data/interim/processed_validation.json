@@ -1,5 +1,5 @@
 {
-  "validated_at_utc": "2026-10-23T13:37:25.775898+00:00",
+  "validated_at_utc": "2026-10-31T05:36:39.545321+00:00",
   "settings": {
     "coverage_since": "2020-01-01",
     "min_coverage_frac": 0.9,
@@ -9,9 +9,9 @@
   },
   "rows": {
     "history": 1301754,
-    "live": 663
+    "live": 1741
   },
-  "seconds": 1.7,
+  "seconds": 2.8,
   "critical_passed": true,
   "critical": {
     "schema": [],

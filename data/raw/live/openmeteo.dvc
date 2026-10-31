@@ -1,0 +1,6 @@
+outs:
+- md5: 4a0f965bb7d14094f1d437ab622f5c2c.dir
+  size: 3545672
+  nfiles: 22
+  hash: md5
+  path: openmeteo
