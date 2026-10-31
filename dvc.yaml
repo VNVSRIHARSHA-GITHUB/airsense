@@ -162,7 +162,9 @@ stages:
       - src/airsense/features/build_training.py
       - src/airsense/features/build_features.py
       - feature_repo/features.py
-      - feature_repo/feature_store.yaml
+      # Not feature_store.yaml: training reads only its offline store (DuckDB, fixed);
+      # the rest of that file is online-store (Redis) settings, which must not
+      # trigger a retrain. After changing the offline store: dvc repro -f build_training
       - data/features/pm_history
       - data/features/weather_history
     params:
