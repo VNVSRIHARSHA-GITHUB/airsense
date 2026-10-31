@@ -7,7 +7,10 @@ mlflow.db
 *.log
 .ipynb_checkpoints/
 debug.md
-data/raw/live/
+# live snapshots: the data itself is in DVC (cache + remote); their .dvc files are in Git
+# (named folders, no '!' exceptions: DVC does not see .dvc files behind those)
+data/raw/live/datagov/
+data/raw/live/openmeteo/
 decisions.md
 .pytest_cache/
 *.egg-info/
