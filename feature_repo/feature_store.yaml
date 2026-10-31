@@ -9,6 +9,12 @@ online_store:
   # retry=null: fail at once when Redis is down instead of the client's default
   # 3 retries with growing waits (~7 s per read); our code retries once itself.
   connection_string: localhost:6379,retry=null,socket_connect_timeout=2,socket_timeout=2
+  # Write without comparing timestamps. By default Feast skips a row whose event
+  # time equals the stored one, so a late station that revises the latest hour
+  # (same hour, new value) never reached Redis and the skew check failed. Safe
+  # here: materialization writes only the newest row per city, and the `dvc`
+  # pool in Airflow allows a single writer at a time.
+  skip_dedup: true
 offline_store:
   type: duckdb                      # point-in-time joins in DuckDB (the default "file" store ran out of memory)
 entity_key_serialization_version: 3
