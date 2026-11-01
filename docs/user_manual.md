@@ -63,8 +63,8 @@ Click a tile to see that city's details below. The selected tile has a dark outl
 
 1. **The coloured box**: the city's current 24-hour average, its category, a scale showing where the value sits among the six AQI categories, and the hour it describes.
 2. **The outlook** next to it, for example *"Expected to stay Very Poor for the next 24 hours"*, with three figures: the **highest** and **lowest** expected values and when they happen, and the **change over the 24 hours** (in µg/m³ and %). Below them: where the 24-hour average is heading by the last forecast hour, the **health effect** of the worst category expected (*"At Very Poor: …"* when the category stays the same, *"If it reaches Severe: …"* when it gets worse), and how many stations the value comes from and how long ago it was measured (normally about 2–3 hours, because official data is published with a delay).
-3. **Next 24 hours, hour by hour**: one coloured box per hour. A small tick under each box, and every 3 hours a longer tick with the time written centred under its box, so each time clearly belongs to one box; the day is written above where a new day starts, with a line marking the start of the day.
-4. **The line chart**: the same forecast as numbers, with a point for every hour in its AQI colour. The first point is the latest measured value; the **highest** hour has an orange ring and the label *Peak*, the **lowest** a blue ring and the label *Low*; a dashed vertical line marks midnight; the background colour shows the AQI band. **Hover over a cell or a point** (on a phone, tap): the cell and the chart point light up together and a box shows the date and time, the value and category, and the change from the hour before.
+3. **Next 24 hours, hour by hour**: a chart with a row of coloured boxes along the top, **one box directly above each hour's point**, in that hour's AQI colour. The legend above the chart explains the symbols: the first point is a **diamond ◆** (with an outlined box above it): the latest **measured** value; the other points are **circles ●**, the **forecast** for each of the next 24 hours, each in its AQI colour. The **highest** forecast hour has an orange ring and the label *Peak*, the **lowest** a blue ring and *Low* (the measured value is not counted). Times are written under the chart every 3 hours, starting with the measured hour; a dashed line marks midnight, with the new day's name above the boxes; the background colour shows the AQI band.
+4. **Hover over a box or a point** (on a phone, tap; with the keyboard, select the chart and use the left and right arrow keys): the box and the point light up together and a small box shows the date and time, the value and category, and whether it is measured or forecast (with the change from the hour before).
 5. Two tabs below the chart:
    - **What to do** (shown first): choose who the advice is for (**General public**; **Children, elderly, heart or lung conditions**: stricter advice for sensitive people; **Outdoor workers and exercise**: for people who spend long periods outside). The choice changes only the advice text; the forecast is the same for everyone. The sources (CPCB and the World Health Organization) are listed under the advice.
    - **Why this forecast**: the six inputs that changed the forecast most, and **all other factors combined** in the last row. An orange bar to the right means the input **raises** the forecast; a blue bar to the left means it **lowers** it. The number is the effect in µg/m³, averaged over the next 24 hours. An input whose reading is missing is not listed (its effect is part of "all other factors").
@@ -74,10 +74,10 @@ Click a tile to see that city's details below. The selected tile has a dark outl
 
 ### 3.3 Across India right now
 
-Below the details: the **most polluted** and **cleanest** city, any city with no recent data, and two charts:
+Below the details: the **most polluted** and **cleanest** city, and any city with no recent data. Below them, two tabs:
 
-- **Cities, most polluted first**: one bar per city in its AQI colour, with the category names along the top. Click a bar to open that city.
-- **Cities per category**: how many cities are in each category, with *No data* first (set apart by a dashed line), then Good to Severe; categories with no city show 0. Hover over a bar to see its cities; click it to highlight those cities in the first chart, and click again to clear.
+- **By city** (shown first): one bar per city in its AQI colour, most polluted first, with the category names along the top. Click a bar to open that city.
+- **By category**: how many cities are in each category, with *No data* first (set apart by a dashed line), then Good to Severe; categories with no city show 0. Hover over a bar to see its cities; click it to switch to **By city** with only those cities highlighted (**Show all** clears it).
 
 ### 3.4 How to read this page
 

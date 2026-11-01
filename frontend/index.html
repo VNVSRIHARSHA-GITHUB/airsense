@@ -62,17 +62,7 @@
         <p class="section-note">Select a city's bar to open it</p>
       </div>
       <div id="overview-callouts" class="callouts"></div>
-      <div class="india-grid">
-        <div>
-          <h3 class="chart-h">Cities, most polluted first</h3>
-          <div class="chart-box india"><canvas id="india-chart" role="img"></canvas></div>
-        </div>
-        <div>
-          <h3 class="chart-h">Cities per category</h3>
-          <div class="chart-box cats"><canvas id="category-chart" role="img"></canvas></div>
-          <p class="section-note">Select a category to highlight its cities; select it again to clear.</p>
-        </div>
-      </div>
+      <div id="india-tabs"></div>
     </section>
 
     <details class="card help">
@@ -80,7 +70,8 @@
       <div class="help-body">
         <div class="help-text">
           <p><strong>PM2.5</strong> are fine particles in the air, small enough to reach deep into the lungs. Values are the average over the last 24 hours, in micrograms per cubic metre (µg/m³), as used by India's official Air Quality Index (AQI).</p>
-          <p><strong>The forecast</strong> shows the expected 24-hour average for each of the next 24 hours. It changes slowly because each new hour replaces only one of the 24 hours being averaged. Hover over the hour strip or the chart to see each hour.</p>
+          <p><strong>The forecast</strong> shows the expected 24-hour average for each of the next 24 hours. It changes slowly because each new hour replaces only one of the 24 hours being averaged. Hover over a coloured box or a point in the chart to see that hour.</p>
+          <p><strong>Measured and forecast values.</strong> The first point (◆, with an outlined box above it) is the latest measured value: the 24-hour average of the CPCB stations in the city, usually 2–3 hours old because official data is published with a delay. The other points (●) are the forecast for each of the next 24 hours. Peak and Low mark the highest and lowest forecast hours; the measured value is not counted.</p>
           <p><strong>Why this forecast</strong> lists the six inputs that pushed the forecast up or down the most, in µg/m³, and the combined effect of all the others.</p>
           <p><strong>Notes</strong> appear when some input data was missing; the forecast is still made, but may be less accurate. If no forecast is shown, the latest measurement is too old or missing.</p>
         </div>

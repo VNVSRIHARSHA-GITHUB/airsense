@@ -16,7 +16,7 @@ const STATE_OF = {
   Kolkata: "West Bengal", Guwahati: "Assam",
 };
 
-const state = { city: null, group: "general", tab: "advice", cities: [], f: null, chart: null, india: null, cats: null, pickedCat: null };
+const state = { city: null, group: "general", tab: "advice", cities: [], f: null, chart: null, india: null, cats: null, pickedCat: null, indiaTab: "by-city", indiaTabs: null };
 
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const hasValue = (c) => c.pm25_24h != null;
@@ -27,7 +27,7 @@ const measuredAt = (c) => (c.age_hours == null ? null : new Date(Date.now() - c.
 // ---------- city tiles and phone dropdown ----------
 
 function renderCities() {
-  document.getElementById("cities").replaceChildren(
+  fill(document.getElementById("cities"), 
     ...ranked().map((c) => {
       const info = aqiInfo(c.aqi_category);
       const known = hasValue(c);
@@ -55,7 +55,7 @@ function renderCities() {
 
 function renderCitySelect() {
   const sel = document.getElementById("city-select");
-  sel.replaceChildren(...ranked().map((c) =>
+  fill(sel, ...ranked().map((c) =>
     el("option", { value: c.city }, hasValue(c) ? `${c.city}: ${Math.round(c.pm25_24h)}, ${c.aqi_category}` : `${c.city}: no recent data`)));
   sel.value = state.city;
 }
@@ -127,6 +127,21 @@ function callout(kind, c) {
     el("span", { class: "callout-val" }, hasValue(c) ? `${Math.round(c.pm25_24h)} µg/m³, ${info.name}` : "No recent data"));
 }
 
+// The two charts sit in tabs; only the visible one is drawn (a hidden canvas has no size).
+function setupOverview() {
+  const cityPanel = el("div", {},
+    el("div", { id: "picked", class: "picked", hidden: "" }),
+    el("div", { class: "chart-box india" }, el("canvas", { id: "india-chart", role: "img" })));
+  const catPanel = el("div", {},
+    el("div", { class: "chart-box cats" }, el("canvas", { id: "category-chart", role: "img" })),
+    el("p", { class: "section-note" }, "Hover over a bar to see its cities; select it to show them in “By city”."));
+  state.indiaTabs = makeTabs("Across India charts", [
+    { id: "by-city", label: "By city", panel: cityPanel },
+    { id: "by-category", label: "By category", panel: catPanel },
+  ], state.indiaTab, (id) => { state.indiaTab = id; drawIndia(); });
+  fill(document.getElementById("india-tabs"), state.indiaTabs);
+}
+
 function renderOverview() {
   const box = document.getElementById("overview");
   const order = ranked();
@@ -134,7 +149,7 @@ function renderOverview() {
   if (!known.length) { box.hidden = true; return; }
   box.hidden = false;
   const missing = order.filter((c) => !hasValue(c));
-  document.getElementById("overview-callouts").replaceChildren(
+  fill(document.getElementById("overview-callouts"),
     callout("Most polluted", known[0]),
     callout("Cleanest", known[known.length - 1]),
     missing.length
@@ -144,13 +159,29 @@ function renderOverview() {
           el("span", { class: "callout-val" }, "Skipped until new measurements arrive"))
       : null,
   );
+  drawIndia();
+}
 
-  drawCategories(order);
+function drawIndia() {
+  const order = ranked();
+  if (state.india) { state.india.destroy(); state.india = null; }
+  if (state.cats) { state.cats.destroy(); state.cats = null; }
+  const picked = document.getElementById("picked");
+  const n = order.filter((c) => (c.aqi_category || "No data") === state.pickedCat).length;
+  picked.hidden = !state.pickedCat;
+  if (state.pickedCat) {
+    fill(picked, el("span", {}, `Showing ${state.pickedCat}: ${n} ${n === 1 ? "city" : "cities"}`),
+      el("button", { type: "button", class: "ghost small", onclick: () => { state.pickedCat = null; drawIndia(); } }, "Show all"));
+  }
+  if (state.indiaTab === "by-category") drawCategories(order); else drawCities(order);
+}
+
+function drawCities(order) {
+  const known = order.filter(hasValue);
   const canvas = document.getElementById("india-chart");
   canvas.parentElement.style.height = `${order.length * 30 + 40}px`;
   canvas.setAttribute("aria-label", "Cities by 24-hour average PM2.5: " +
     order.map((c) => `${c.city} ${hasValue(c) ? Math.round(c.pm25_24h) : "no data"}`).join(", "));
-  if (state.india) state.india.destroy();
   const max = Math.max(...known.map((c) => c.pm25_24h));
   state.india = new Chart(canvas, {
     type: "bar",
@@ -217,7 +248,7 @@ function drawCategories(order) {
       labels: groups.map((g) => g.name),
       datasets: [{
         data: groups.map((g) => g.cities.length),
-        backgroundColor: groups.map((g) => g.color + (state.pickedCat && g.name !== state.pickedCat ? "40" : "")),
+        backgroundColor: groups.map((g) => g.color),
         borderRadius: 5, barPercentage: 0.75, minBarLength: 3,
       }],
     },
@@ -238,15 +269,15 @@ function drawCategories(order) {
           callbacks: {
             title: (items) => `${groups[items[0].dataIndex].name}: ${groups[items[0].dataIndex].cities.length} ${groups[items[0].dataIndex].cities.length === 1 ? "city" : "cities"}`,
             label: (c) => groups[c.dataIndex].cities.join(", ") || "none right now",
-            footer: (items) => (state.pickedCat === groups[items[0].dataIndex].name ? "Select again to clear" : "Select to highlight these cities"),
+            footer: (items) => (groups[items[0].dataIndex].cities.length ? "Select to show these cities in “By city”" : ""),
           },
         },
       },
       onClick: (e, els) => {
-        if (!els.length) return;
-        const name = groups[els[0].index].name;
-        state.pickedCat = state.pickedCat === name ? null : name;  // a second click clears it
-        setTimeout(renderOverview);  // not inside the chart's own click handler: redrawing destroys it
+        if (!els.length || !groups[els[0].index].cities.length) return;
+        state.pickedCat = groups[els[0].index].name;
+        // not inside the chart's own click handler: switching tabs destroys this chart
+        setTimeout(() => state.indiaTabs.selectTab("by-city"));
       },
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
     },
@@ -323,45 +354,58 @@ function seriesOf(f) {
   ];
 }
 
-function stripBlock(f) {
-  const hours = f.forecast;
-  const narrow = window.innerWidth <= 760;
-  const every = narrow ? 6 : 3;  // a time label every 3 hours (6 on a phone)
-  const cols = hours.map((h, i) => {
-    const info = aqiInfo(h.aqi_category);
-    const day = fmtDay(h.time_utc);
-    const newDay = i === 0 || day !== fmtDay(hours[i - 1].time_utc);
-    const labelled = (i + 1) % every === 0;  // the same hours as the chart's labels (its point 0 is the measured value)
-    return el("div", { class: "hour" + (newDay ? " daystart" : "") + (newDay && i > 0 ? " newday" : "") },
-      el("span", { class: "hour-day", "aria-hidden": "true" }, newDay ? day : ""),
-      el("button", {
-        type: "button", class: "cell", style: bandStyle(info),
-        "aria-label": `${fmtWhen(h.time_utc)}: ${Math.round(h.pm25)} µg/m³, ${info.name}`,
-        onpointerenter: () => syncChart(i + 1), onfocus: () => syncChart(i + 1),
-        onpointerleave: () => syncChart(null), onblur: () => syncChart(null),
-      }),
-      el("span", { class: "tick" + (labelled ? " long" : ""), "aria-hidden": "true" }),
-      el("span", { class: "hour-time", "aria-hidden": "true" }, labelled ? fmtClock(h.time_utc) : ""));
-  });
-  return el("div", { class: "strip", id: "strip" }, cols);
-}
-
-function syncChart(index) {
-  const c = state.chart;
-  document.querySelectorAll("#strip .cell").forEach((cell, i) => cell.classList.toggle("active", index != null && i === index - 1));
-  if (!c) return;
+// One coloured box per hour above the line, centred on its point; the first is the
+// measured value (outlined box, diamond point). Hover, tap or arrow keys pick an hour.
+function setActiveHour(chart, index) {
   if (index == null) {
-    c.setActiveElements([]);
-    c.tooltip.setActiveElements([], { x: 0, y: 0 });
+    chart.setActiveElements([]);
+    chart.tooltip.setActiveElements([], { x: 0, y: 0 });
   } else {
-    const p = c.getDatasetMeta(0).data[index];
-    c.setActiveElements([{ datasetIndex: 0, index }]);
-    c.tooltip.setActiveElements([{ datasetIndex: 0, index }], { x: p.x, y: p.y });
+    const p = chart.getDatasetMeta(0).data[index];
+    chart.setActiveElements([{ datasetIndex: 0, index }]);
+    chart.tooltip.setActiveElements([{ datasetIndex: 0, index }], { x: p.x, y: p.y });
   }
-  c.update("none");
+  chart.update("none");
 }
 
-// AQI bands behind the line, day boundaries, peak and low labels, hover line.
+const BOX_H = 22;  // height of the hour boxes above the plot
+const hourBoxes = {
+  id: "hourBoxes",
+  afterDraw(chart) {
+    const { ctx, chartArea: a } = chart;
+    const pts = chart.getDatasetMeta(0).data;
+    const times = chart.data.labels;
+    const cats = chart.data.datasets[0].cats;  // in the data: the chart draws during construction (#51)
+    const step = pts.length > 1 ? pts[1].x - pts[0].x : 20;
+    const w = Math.max(4, step * 0.82);
+    const top = a.top - BOX_H - 10;
+    const act = chart.getActiveElements();
+    const on = act.length ? act[0].index : null;
+    ctx.save();
+    pts.forEach((p, i) => {
+      const colour = aqiInfo(cats[i]).color;
+      const x = p.x - w / 2;
+      const grow = i === on ? 3 : 0;
+      ctx.beginPath();
+      ctx.roundRect(x, top - grow, w, BOX_H + grow * 2, 4);
+      if (i === 0) {  // measured: outlined
+        ctx.fillStyle = colour + "55"; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = colour; ctx.stroke();
+      } else {
+        ctx.fillStyle = colour; ctx.fill();
+      }
+      if (i === on) { ctx.lineWidth = 2.5; ctx.strokeStyle = cssVar("--ink"); ctx.stroke(); }
+    });
+    // day names above the boxes, where a day starts
+    ctx.fillStyle = cssVar("--muted");
+    ctx.font = `700 11px ${cssVar("--font")}`;
+    ctx.textBaseline = "bottom";
+    ctx.fillText(fmtDay(times[0]), pts[0].x - w / 2, top - 6);
+    ctx.restore();
+  },
+};
+
+// AQI bands behind the line, midnight line, peak and low labels, hover line.
 const forecastDecor = {
   id: "forecastDecor",
   beforeDraw(chart) {
@@ -393,13 +437,14 @@ const forecastDecor = {
     ctx.save();
     ctx.strokeStyle = cssVar("--line-strong");
     ctx.fillStyle = cssVar("--muted");
-    ctx.font = `600 11px ${cssVar("--font")}`;
+    ctx.font = `700 11px ${cssVar("--font")}`;
+    ctx.textBaseline = "bottom";
     ctx.setLineDash([4, 4]);
     for (let i = 1; i < times.length; i++) {
-      if (fmtDay(times[i]) !== fmtDay(times[i - 1])) {
+      if (fmtDay(times[i]) !== fmtDay(times[i - 1])) {  // midnight: line up through the boxes, day name on top
         const px = (x.getPixelForValue(i - 1) + x.getPixelForValue(i)) / 2;
-        ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
-        ctx.fillText(fmtDay(times[i]), px + 5, a.top + 13);
+        ctx.beginPath(); ctx.moveTo(px, a.top - BOX_H - 20); ctx.lineTo(px, a.bottom); ctx.stroke();
+        ctx.fillText(fmtDay(times[i]), px + 5, a.top - BOX_H - 16);
       }
     }
     const act = chart.getActiveElements();
@@ -408,15 +453,15 @@ const forecastDecor = {
       ctx.setLineDash([]);
       ctx.strokeStyle = cssVar("--ink");
       ctx.globalAlpha = 0.35;
-      ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px, a.top - 8); ctx.lineTo(px, a.bottom); ctx.stroke();
     }
     ctx.restore();
   },
   afterDatasetsDraw(chart) {
-    const { ctx } = chart;
+    const { ctx, chartArea: a } = chart;
     const pts = chart.getDatasetMeta(0).data;
     const data = chart.data.datasets[0].data;
-    const fc = data.slice(1);
+    const fc = data.slice(1);  // the measured value is not part of Peak and Low
     const hi = 1 + fc.indexOf(Math.max(...fc));
     const lo = 1 + fc.indexOf(Math.min(...fc));
     ctx.save();
@@ -424,14 +469,49 @@ const forecastDecor = {
     ctx.textAlign = "center";
     const tag = (i, text, above, colour) => {
       const p = pts[i];
+      let y = above ? p.y - 13 : p.y + 23;
+      if (!above && y > a.bottom - 4) y = p.y - 13;  // no room below: put it above
+      if (above && y < a.top + 12) y = p.y + 23;     // no room above: put it below
+      // keep the label inside the chart at the left and right edges
+      const half = ctx.measureText(text).width / 2;
+      const x = Math.min(a.right - half - 2, Math.max(a.left + half + 2, p.x));
       ctx.fillStyle = colour;
-      ctx.fillText(text, p.x, above ? p.y - 13 : p.y + 23);
+      ctx.fillText(text, x, y);
     };
     tag(hi, `Peak ${Math.round(data[hi])}`, true, cssVar("--raises"));
     if (lo !== hi) tag(lo, `Low ${Math.round(data[lo])}`, false, cssVar("--lowers"));
     ctx.restore();
   },
 };
+
+function hourKeys(canvas) {  // keyboard: arrows move from hour to hour
+  canvas.addEventListener("keydown", (e) => {
+    const c = state.chart;
+    if (!c) return;
+    const n = c.data.labels.length;
+    const act = c.getActiveElements();
+    const i = act.length ? act[0].index : -1;
+    const to = { ArrowRight: Math.min(n - 1, i + 1), ArrowLeft: Math.max(0, i - 1), Home: 0, End: n - 1 }[e.key];
+    if (to != null) { e.preventDefault(); setActiveHour(c, to); }
+  });
+  canvas.addEventListener("blur", () => state.chart && setActiveHour(state.chart, null));
+  // the boxes are above the plot area, where the chart itself ignores the pointer
+  const pick = (e) => {
+    const c = state.chart;
+    if (!c) return;
+    const r = canvas.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    const a = c.chartArea;
+    if (y >= a.top - BOX_H - 14 && y < a.top) {
+      const pts = c.getDatasetMeta(0).data;
+      let best = 0;
+      pts.forEach((p, k) => { if (Math.abs(p.x - x) < Math.abs(pts[best].x - x)) best = k; });
+      setActiveHour(c, best);
+    }
+  };
+  canvas.addEventListener("pointermove", pick);
+  canvas.addEventListener("pointerdown", pick);
+}
 
 function drawChart(canvas, f) {
   if (state.chart) state.chart.destroy();
@@ -450,27 +530,30 @@ function drawChart(canvas, f) {
   const points = (fn) => series.map((s, i) => fn(s, i));
   const peak = 1 + values.slice(1).indexOf(Math.max(...values.slice(1)));
   const low = 1 + values.slice(1).indexOf(Math.min(...values.slice(1)));
+  const ring = (i) => i === peak || i === low;
   state.chart = new Chart(canvas, {
     type: "line",
     data: {
       labels: series.map((s) => s.time),
       datasets: [{
         data: values,
+        cats: series.map((s) => s.cat),  // AQI category per point, for the boxes
         borderColor: ink, borderWidth: 2, tension: 0.25,
-        pointRadius: points((s, i) => (i === peak || i === low ? 6.5 : 3.5)),
-        pointHoverRadius: points((s, i) => (i === peak || i === low ? 8 : 6)),
+        pointStyle: points((s, i) => (i === 0 ? "rectRot" : "circle")),
+        pointRadius: points((s, i) => (i === 0 ? 7 : ring(i) ? 6.5 : 3.5)),
+        pointHoverRadius: points((s, i) => (i === 0 ? 9 : ring(i) ? 8 : 6)),
         pointBackgroundColor: points((s) => aqiInfo(s.cat).color),
         pointBorderColor: points((s, i) => (i === peak ? cssVar("--raises") : i === low ? cssVar("--lowers") : ink)),
-        pointBorderWidth: points((s, i) => (i === peak || i === low ? 3.5 : 1.5)),
+        pointBorderWidth: points((s, i) => (ring(i) ? 3.5 : i === 0 ? 2 : 1.5)),
       }],
     },
     options: {
       maintainAspectRatio: false, animation: false,
       interaction: { mode: "index", intersect: false },
-      layout: { padding: { top: 6, right: 8 } },
+      layout: { padding: { top: BOX_H + 30, right: 10 } },
       scales: {
         y: {
-          min: Math.max(0, Math.floor((lo - pad) / 10) * 10), max: Math.ceil((hi + pad) / 10) * 10,
+          min: Math.max(0, Math.floor((lo - pad * 1.4) / 10) * 10), max: Math.ceil((hi + pad) / 10) * 10,
           title: { display: true, text: "µg/m³", color: cssVar("--muted") },
           ticks: { color: cssVar("--muted"), maxTicksLimit: 6 }, grid: { color: cssVar("--grid") }, border: { display: false },
         },
@@ -494,17 +577,13 @@ function drawChart(canvas, f) {
               const mark = i === peak ? " (highest)" : i === low ? " (lowest)" : "";
               if (i === 0) return "Measured (latest 24-hour average)";
               const d = Math.round(values[i] - values[i - 1]);
-              return `${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(d)} µg/m³ from the hour before${mark}`;
+              return `Forecast: ${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(d)} µg/m³ from the hour before${mark}`;
             },
           },
         },
       },
-      onHover: (e, els) => {
-        const i = els.length ? els[0].index : null;
-        document.querySelectorAll("#strip .cell").forEach((cell, j) => cell.classList.toggle("active", i != null && j === i - 1));
-      },
     },
-    plugins: [forecastDecor],
+    plugins: [forecastDecor, hourBoxes],
   });
 }
 
@@ -586,19 +665,25 @@ function renderForecast(f) {
   if (!f.available) {
     box.style.cssText = "";
     if (state.chart) { state.chart.destroy(); state.chart = null; }
-    box.replaceChildren(renderUnavailable(f));
+    fill(box, renderUnavailable(f));
     return;
   }
   box.style.cssText = bandStyle(aqiInfo(f.current.aqi_category));
-  const canvas = el("canvas", { role: "img", "aria-label": `Line chart of the 24-hour forecast for ${f.city}` });
-  box.replaceChildren(
+  const canvas = el("canvas", {
+    role: "img", tabindex: "0",
+    "aria-label": `Chart of the next 24 hours for ${f.city}: the measured value, then one point per forecast hour. Use the left and right arrow keys to read each hour.`,
+  });
+  fill(box, 
     el("div", { class: "detail-head" }, readingBlock(f), summaryBlock(f)),
     el("div", { class: "hours" },
       el("div", { class: "section-top" },
         el("h3", { class: "section-h" }, "Next 24 hours, hour by hour"),
-        el("p", { class: "section-note" }, "Hover or tap an hour to see its value")),
-      stripBlock(f),
-      el("div", { class: "chart-box" }, canvas)),
+        el("div", { class: "chart-legend", "aria-hidden": "true" },
+          el("span", {}, el("i", { class: "lg-diamond" }), "Measured"),
+          el("span", {}, el("i", { class: "lg-dot" }), "Forecast"),
+          el("span", {}, el("i", { class: "lg-ring peak" }), "Peak"),
+          el("span", {}, el("i", { class: "lg-ring low" }), "Low"))),
+      el("div", { class: "chart-box hours-chart" }, canvas)),
     makeTabs("Advice and explanation", [
       { id: "advice", label: "What to do", panel: adviceTab(f) },
       { id: "why", label: "Why this forecast", panel: whyTab(f) },
@@ -606,6 +691,7 @@ function renderForecast(f) {
     notesBlock(f),
   );
   drawChart(canvas, f);
+  hourKeys(canvas);
   document.getElementById("model-line").textContent =
     `Model ${f.model.name}, version ${f.model.version}. Forecast made ${fmtWhen(f.generated_at_utc)}` +
     (f.model_latency_ms != null ? ` in ${Math.round(f.model_latency_ms)} ms.` : ".");
@@ -621,7 +707,7 @@ async function loadForecast({ quiet = false } = {}) {
   } else {
     box.hidden = false;
     if (state.chart) { state.chart.destroy(); state.chart = null; }
-    box.replaceChildren(el("div", { class: "loading" },
+    fill(box, el("div", { class: "loading" },
       el("span", { class: "spinner", "aria-hidden": "true" }), `Loading the forecast for ${state.city}…`));
   }
   try {
@@ -631,7 +717,7 @@ async function loadForecast({ quiet = false } = {}) {
     state.f = null;
     if (state.chart) { state.chart.destroy(); state.chart = null; }
     box.style.cssText = "";
-    box.replaceChildren(el("div", { class: "unavailable" },
+    fill(box, el("div", { class: "unavailable" },
       el("h3", {}, `Could not load the forecast for ${state.city}`),
       el("p", {}, `${reason(e)}. Use Refresh to try again in a moment.`)));
   } finally {
@@ -666,7 +752,7 @@ async function refreshAll() {
 
 function fillAqiTable() {
   let low = 0;
-  document.getElementById("aqi-rows").replaceChildren(
+  fill(document.getElementById("aqi-rows"), 
     ...AQI.map((a) => {
       const range = a.max === Infinity ? `above ${low}` : `${low === 0 ? 0 : low + 1}–${a.max}`;
       low = a.max;
@@ -685,6 +771,7 @@ document.addEventListener("themechange", () => {  // charts read their colours w
   if (state.f && state.f.available) renderForecast(state.f);
 });
 setupShell();
+setupOverview();
 fillAqiTable();
 refreshAll();
 setInterval(refreshAll, REFRESH_MS);

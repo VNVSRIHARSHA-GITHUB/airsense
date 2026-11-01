@@ -72,7 +72,7 @@ function buildPage() {
     document.querySelectorAll(".status").forEach((c) => c.classList.toggle("current", c.dataset.tab === id));
     if (id === "pipeline" && page.data) renderSpeed(page.data);  // canvas needs a visible size
   });
-  document.getElementById("console-tabs").replaceChildren(page.tabs);
+  fill(document.getElementById("console-tabs"), page.tabs);
 }
 
 function setBadge(tab, text) {
@@ -136,7 +136,7 @@ function renderSummary(d) {
     [m.test_mae != null ? `Test error ${m.test_mae.toFixed(2)} µg/m³` : null,
       g ? `${passed} of ${g.checks.length} gate checks passed` : null].filter(Boolean).join("; "));
 
-  document.getElementById("status-row").replaceChildren(
+  fill(document.getElementById("status-row"), 
     card("workflows", w.cls, "Scheduled workflows", w.line, w.detail), pipe, live, model);
   const current = location.hash.slice(1) || "workflows";
   document.querySelectorAll(".status").forEach((x) => x.classList.toggle("current", x.dataset.tab === current));
@@ -179,11 +179,11 @@ function renderWorkflows(d) {
   const table = document.getElementById("workflows");
   const runs = d.workflows || [];
   if (!runs.length) {
-    table.replaceChildren(el("caption", { class: "hint" }, "No Airflow runs recorded yet. Start Airflow with: bash airflow/start.sh"));
+    fill(table, el("caption", { class: "hint" }, "No Airflow runs recorded yet. Start Airflow with: bash airflow/start.sh"));
     return;
   }
   const cols = ["Workflow", "Schedule", "Latest run", "Next run", "Took", "Result", ""];
-  table.replaceChildren(
+  fill(table, 
     el("thead", {}, el("tr", {}, cols.map((h) => el("th", { scope: "col" }, h)))),
     el("tbody", {}, ...runs.map((w) => {
       const meta = WORKFLOWS[w.dag_id] || { what: "", when: "", staleMin: null };
@@ -207,7 +207,7 @@ function renderWorkflows(d) {
 }
 
 function renderProblems(d) {
-  document.getElementById("problems").replaceChildren(
+  fill(document.getElementById("problems"), 
     ...(d.recent_problems.length
       ? d.recent_problems.map((p) => el("div", { class: "problem" },
           el("span", {}, p.time), el("span", { class: `lvl-${p.level}` }, cap(p.level.toLowerCase())), el("span", {}, `${p.file}: ${p.message}`)))
@@ -284,8 +284,8 @@ function renderGraph(d) {
     g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
     return g;
   });
-  svg.replaceChildren(defs, ...edges, ...nodes);
-  document.getElementById("legend").replaceChildren(
+  fill(svg, defs, ...edges, ...nodes);
+  fill(document.getElementById("legend"), 
     ...["up to date", "changed", "runs every time"].map((k) =>
       el("span", {}, el("i", { style: `background:${cssVar(STATUS[k].fill)};border-color:${cssVar(STATUS[k].stroke)}` }), STATUS[k].label)),
   );
@@ -304,7 +304,7 @@ function selectStage(name) {
   const s = page.data.stages.find((x) => x.name === name);
   const st = statusOf(s.status);
   const rows = s.report ? Object.entries(s.report) : [];
-  document.getElementById("stage-detail").replaceChildren(...[  // no null: replaceChildren would print "null"
+  fill(document.getElementById("stage-detail"), ...[
     el("h3", {}, s.name),
     el("span", { class: `pill ${st.cls}` }, st.label),
     s.reasons.length ? el("p", { class: "reasons" }, "Why: ", s.reasons.join("; ")) : null,
@@ -320,7 +320,7 @@ function renderTable(d) {
   const rate = Object.fromEntries(d.throughput.map((t) => [t.stage, t.rows_per_second]));
   const anyReason = d.stages.some((s) => s.reasons.length);
   const cols = ["Step", "Status", "Last run", "Rows per second", anyReason ? "Why it needs a re-run" : null].filter(Boolean);
-  document.getElementById("stages").replaceChildren(
+  fill(document.getElementById("stages"), 
     el("thead", {}, el("tr", {}, cols.map((h) => el("th", { scope: "col" }, h)))),
     el("tbody", {}, d.stages.map((s) => {
       const st = statusOf(s.status);
@@ -378,7 +378,7 @@ function renderLive(d) {
   const longest = c.gaps_24h.reduce((m, g) => Math.max(m, g.minutes), 0);
   const age = c.minutes_since_last;
 
-  document.getElementById("live-stats").replaceChildren(
+  fill(document.getElementById("live-stats"), 
     el("div", { class: "big-stat" + (c.snapshots_24h < c.expected_24h * 0.9 ? " warn" : "") },
       el("span", {}, "Collected, last 24 hours"), el("strong", {}, `${c.snapshots_24h} of ${c.expected_24h}`), el("em", {}, "one snapshot every 30 minutes")),
     el("div", { class: "big-stat" + (c.gaps_24h.length ? " warn" : "") },
@@ -405,13 +405,13 @@ function renderLive(d) {
     });
   });
   const strip = document.getElementById("live-strip");
-  strip.replaceChildren(...slots);
+  fill(strip, ...slots);
   strip.setAttribute("aria-label", `${c.snapshots_24h} of ${c.expected_24h} half-hour snapshots collected in the last 24 hours`);
-  document.getElementById("live-days").replaceChildren(
+  fill(document.getElementById("live-days"), 
     ...days.map((x) => el("span", { style: `grid-column:${x.start + 1} / span ${x.n}` }, x.n >= 6 ? x.day : "")));
-  document.getElementById("live-axis").replaceChildren(
+  fill(document.getElementById("live-axis"), 
     ...Array.from({ length: 48 }, (_, i) => el("span", {}, i % 8 === 0 ? fmtClock(slotStart(i)) : "")));
-  document.getElementById("gaps").replaceChildren(
+  fill(document.getElementById("gaps"), 
     ...(c.gaps_24h.length
       ? c.gaps_24h.map((g) => el("li", {},
           el("span", {}, g.ongoing ? `No snapshot since ${fmtWhen(g.from_utc)}` : `No snapshot between ${fmtRange(g.from_utc, g.to_utc)}`),
@@ -449,7 +449,7 @@ function renderModel(d) {
     acc ? ["AQI category right", pct(acc.value), "on the validation data"] : null,
     m.version ? ["Version", String(m.version), `${m.name}, the champion`] : null,
   ].filter(Boolean);
-  document.getElementById("model-stats").replaceChildren(...stats.map(([a, b, c]) =>
+  fill(document.getElementById("model-stats"), ...stats.map(([a, b, c]) =>
     el("div", { class: "big-stat" }, el("span", {}, a), el("strong", {}, b), el("em", {}, c))));
   const kv = [
     ["Model", m.name ? `${m.name}, version ${m.version} (champion)` : "No champion model"],
@@ -458,15 +458,15 @@ function renderModel(d) {
     m.val_mae != null ? ["Validation error", `${m.val_mae.toFixed(2)} µg/m³ (mean absolute error)`] : null,
     r ? ["Last decision", `${r.promoted ? `Version ${r.champion_version} promoted` : `Kept version ${r.champion_version}`}: ${r.reason}${r.decided_at_utc ? `, ${fmtWhen(r.decided_at_utc)}` : ""}`] : null,
   ].filter(Boolean);
-  document.getElementById("model-kv").replaceChildren(...kv.flatMap(([a, b]) => [el("dt", {}, a), el("dd", {}, b)]));
+  fill(document.getElementById("model-kv"), ...kv.flatMap(([a, b]) => [el("dt", {}, a), el("dd", {}, b)]));
 
   const line = document.getElementById("gate-line");
   const list = document.getElementById("checks");
-  if (!g) { line.textContent = "No quality gate report yet."; list.replaceChildren(); return; }
+  if (!g) { line.textContent = "No quality gate report yet."; fill(list); return; }
   const passed = g.checks.filter((x) => x.passed).length;
-  line.replaceChildren(el("span", { class: `pill ${g.passed ? "ok" : "bad"}` }, g.passed ? "Passed" : "Failed"), " ",
+  fill(line, el("span", { class: `pill ${g.passed ? "ok" : "bad"}` }, g.passed ? "Passed" : "Failed"), " ",
     `${passed} of ${g.checks.length} checks passed, ${fmtWhen(g.checked_at_utc)}, on the validation data.`);
-  list.replaceChildren(...g.checks.map((x) => {
+  fill(list, ...g.checks.map((x) => {
     const spec = CHECKS[x.check];
     const meter = spec && spec.meter && typeof x.value === "number" ? spec.meter(x.value, x.threshold) : null;
     return el("li", { class: "check" },

@@ -13,12 +13,12 @@ The checks below are for the current layout (tabs, light and dark theme, hover d
 | ID | Check | Steps | Expected | Result |
 |---|---|---|---|---|
 | F1 | Page loads | Open http://localhost:8080 | Logo and title, Refresh with "Latest measurement Sun 1 Nov, 13:30 IST (2 h ago)" under it, 14 city tiles with values and categories sorted most polluted first, the worst city's details shown | |
-| F2 | City details | Click Delhi | Coloured box with value, category, AQI scale marker and time; outlook with Highest, Lowest, Change over 24 hours; trend sentence; health effect; stations and age; hour strip with day labels; line chart; tabs "What to do" and "Why this forecast" | |
+| F2 | City details | Click Delhi | Coloured box with value, category, AQI scale marker and time; outlook with Highest, Lowest, Change over 24 hours; trend sentence; health effect; stations and age; chart with a coloured box above each hour's point and a legend (Measured, Forecast, Peak, Low); tabs "What to do" and "Why this forecast" | |
 | F3 | Switching cities | Click three other cities | Details change to each city; the selected tile has a dark outline and a tint of its colour | |
 | F4 | Advice groups | In "What to do", switch "Advice for" through the 3 choices | Advice text and sources change; forecast numbers stay the same; the tab stays open | |
 | F5 | Why this forecast | Open the "Why this forecast" tab | Six factors in plain words plus "All other factors combined"; bars left (lowers, blue) or right (raises, orange); no internal names like pm25_lag_6h | |
-| F6 | Hover values | Hover over an hour cell, then a chart point | Cell and chart point highlight together; box with date and time, value, category and change from the hour before; a point at every hour, highest with an orange ring and "Peak", lowest with a blue ring and "Low" | |
-| F7 | Times and dates | Look at the strip and chart labels | Each strip time sits centred under its own box with a tick (also after midnight); the same hours are labelled on strip and chart; the day is written where a new day starts; a dashed line at midnight in the chart; no "now" label | |
+| F6 | Hover values | Hover over a box above the chart, then a point; select the chart and press the arrow keys | Box and point highlight together; a box with date and time, value, category, and "Measured" or "Forecast" with the change from the hour before; the first point is a diamond with an outlined box; highest forecast hour with an orange ring and "Peak", lowest with a blue ring and "Low"; labels never cut off at the edges | |
+| F7 | Times and dates | Look at the chart's time labels and the boxes | Each box sits exactly above its point; times every 3 hours starting with the measured hour; the day under the first time and where a new day starts; a dashed midnight line through the boxes with the day name above; no "now" label | |
 | F8 | AQI colours and labels | Compare tiles with the table in "How to read this page" | Each tile's colour matches its category; the category is also written as text | |
 | F9 | Notes | Open a city with missing history (if any) | Yellow "Notes on this forecast" box in plain words; the missing reading is not listed in "Why this forecast" | |
 | F10 | No forecast (stale data) | Do not refresh live features for more than 4 h, then open a city | "No forecast for … right now", reason with the age, last known reading, other cities in the region | |
@@ -26,8 +26,8 @@ The checks below are for the current layout (tabs, light and dark theme, hover d
 | F12 | Backend down | Stop the backend, press Refresh | Red bar explaining the service cannot be reached | |
 | F13 | Loading message | Restart the backend, click a city immediately | "Loading the forecast for …" with a spinner until the details appear | |
 | F14 | Refresh | Press Refresh after `dvc repro feast_online` | "Latest measurement …" updates; the open tab stays open | |
-| F15 | Across India | Look at the card below the details, click a city's bar; then click a category bar twice | Most polluted and cleanest city, cities without data named; city bars sorted and coloured by category, clicking opens that city; category chart with No data first and all six categories (0 shown), counts on top, hover lists the cities, first click highlights them in the city chart, second click clears | |
-| F16 | Help section | Open "How to read this page" | Explanation on the left, AQI table with colours on the right | |
+| F15 | Across India | Click a city's bar; open "By category", click a bar; press "Show all" | Most polluted and cleanest city (and cities without data, if any); "By city": bars sorted and coloured by category, a click opens that city; "By category": No data first and all six categories (0 shown), counts on top, hover lists the cities; a click switches to "By city" with those cities highlighted; "Show all" clears it; the word "null" never appears | |
+| F16 | Help section | Open "How to read this page" | Explanation on the left (including measured ◆ vs forecast ●, Peak and Low), AQI table with colours on the right | |
 | F17 | Dark theme | Press the moon button, reload the page | Dark colours everywhere including charts; after the reload it is still dark; the sun button switches back | |
 | F18 | Keyboard use | Use Tab, Enter and the arrow keys only | Every tile, hour cell, tab and control can be reached; arrows move between tabs; a visible focus outline shows where you are | |
 
@@ -39,7 +39,7 @@ The checks below are for the current layout (tabs, light and dark theme, hover d
 | P2 | Menu | Tap the menu button | Forecast and Pipeline console links; tapping outside closes it | |
 | P3 | City menu | Open the City menu | Cities from most to least polluted, with value and category | |
 | P4 | Details | Choose a city | Details directly below, readable without zooming; outlook figures as compact rows; chart labels do not overlap | |
-| P5 | Across India | Scroll down, tap a bar | That city opens and the page scrolls to its details | |
+| P5 | Across India | Scroll down, tap a city's bar | That city opens and the page scrolls to its details | |
 
 ## Pipeline console
 

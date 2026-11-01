@@ -104,6 +104,11 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+// Fill a node with children, skipping null/false/"" (replaceChildren would print "null").
+function fill(node, ...children) {
+  node.replaceChildren(...children.flat().filter((c) => c != null && c !== false && c !== ""));
+}
+
 function svgIcon(name) {
   const paths = {
     sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/>',
