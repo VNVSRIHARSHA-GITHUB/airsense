@@ -101,13 +101,23 @@ def test_city_unknown_to_model():
 def test_missing_history_is_reported_not_fatal():
     out = make_service({"pm25_24h": 100.0, "pm25_lag_1h": None}).forecast("Delhi")
     assert out["available"]
-    assert out["warnings"] == ["PM2.5 history missing for: pm25_lag_1h"]
+    assert out["warnings"] == [
+        "Some past readings are missing (PM2.5 1 hour ago), so this forecast may be less accurate."
+    ]
+    # a missing input is not shown as a factor; its effect is in "all other factors"
+    assert "PM2.5 1 hour ago" not in [f["factor"] for f in out["explanation"]]
+    shown = sum(f["effect_ug_m3"] for f in out["explanation"])
+    assert shown + out["explanation_other_ug_m3"] == pytest.approx(
+        len(FEATURES), abs=0.2
+    )
 
 
 def test_negative_forecast_is_clipped_with_warning():
     out = make_service({"pm25_24h": 5.0}, change=-8.0).forecast("Delhi")
     assert all(h["pm25"] == 0 for h in out["forecast"])
-    assert "negative forecasts set to 0" in out["warnings"]
+    assert (
+        "Some hours were forecast below zero; they are shown as 0." in out["warnings"]
+    )
 
 
 def test_model_server_down_raises_for_the_api():
@@ -124,17 +134,20 @@ def test_guidance_failure_keeps_the_forecast():
     s.guidance = broken
     out = s.forecast("Delhi")
     assert out["available"] and out["guidance"] is None
-    assert out["warnings"][0] == "health advice service unavailable right now"
+    assert out["warnings"][0] == "Health advice is unavailable right now."
     assert "already accessed" not in " ".join(out["warnings"])  # detail only in the log
 
 
 def test_incomplete_weather_gives_no_forecast():
     s = make_service({"pm25_24h": 100.0})
     full, _ = s.weather_table()
-    s.weather_table = lambda: (full.iloc[:35], "live weather forecast unavailable; ...")
+    s.weather_table = lambda: (
+        full.iloc[:35],
+        "The live weather forecast is unavailable, ...",
+    )
     out = s.forecast("Delhi")
     assert out["available"] is False and "weather forecast missing" in out["reason"]
-    assert out["warnings"] == ["live weather forecast unavailable; ..."]
+    assert out["warnings"] == ["The live weather forecast is unavailable, ..."]
 
 
 def test_saved_forecast_is_used_when_live_weather_fails(tmp_path, monkeypatch):
@@ -170,7 +183,7 @@ def test_saved_forecast_is_used_when_live_weather_fails(tmp_path, monkeypatch):
     )
     s.params["features"].update(weather_offset_minutes=30)
     table, note = s.weather_table()
-    assert len(table) == 96 and "fetched Fri 23 Oct 18:00 IST" in note
+    assert len(table) == 96 and "fetched Fri 23 Oct, 18:00 IST" in note
 
 
 def test_model_server_error_keeps_mlflow_reason(monkeypatch):

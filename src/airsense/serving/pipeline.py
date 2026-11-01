@@ -208,16 +208,22 @@ def snapshot_times(folder: Path) -> list[datetime]:
 def collection_health(
     times: list[datetime], now: datetime, every_min: int = 30
 ) -> dict:
-    """Last snapshot, snapshots in the last 24 h, and gaps longer than 1.5 intervals."""
-    day = [t for t in times if t > now - timedelta(hours=24)]
+    """Last snapshot, snapshots in the last 24 h, and gaps longer than 1.5 intervals.
+
+    The start of the 24-hour window and "now" count as edges, so a collector
+    that stopped (no snapshot since) shows as an ongoing gap, not as "no gaps".
+    """
+    start = now - timedelta(hours=24)
+    day = [t for t in times if t > start]
     gap_limit = timedelta(minutes=every_min * 1.5)
     gaps = [
         {
             "from_utc": a.isoformat(),
             "to_utc": b.isoformat(),
             "minutes": round((b - a).total_seconds() / 60),
+            "ongoing": b == now,
         }
-        for a, b in itertools.pairwise(day)
+        for a, b in itertools.pairwise([start, *day, now])
         if b - a > gap_limit
     ]
     last = times[-1] if times else None
@@ -270,13 +276,23 @@ def workflows(runs: dict | None, now: datetime, airflow_url: str | None) -> list
             age = round((now - datetime.fromisoformat(end)).total_seconds() / 60)
         except (TypeError, ValueError):
             age = None
+        try:  # how long the run took
+            took = (
+                datetime.fromisoformat(r["end_date"])
+                - datetime.fromisoformat(r["start_date"])
+            ).total_seconds() / 60
+            took = round(took, 1) if took >= 0 else None
+        except (KeyError, TypeError, ValueError):
+            took = None
         out.append(
             {
                 "dag_id": dag_id,
                 "state": r.get("state"),
                 "run_type": r.get("run_type"),
+                "start_utc": r.get("start_date"),
                 "end_utc": end,
                 "minutes_ago": age,
+                "duration_min": took,
                 "url": f"{airflow_url.rstrip('/')}/dags/{dag_id}"
                 if airflow_url
                 else None,

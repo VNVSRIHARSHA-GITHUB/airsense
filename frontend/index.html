@@ -5,78 +5,90 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AirSense — air quality forecast</title>
   <meta name="description" content="24-hour PM2.5 and AQI forecast with health advice for 14 Indian cities">
+  <script>
+    // theme before the first paint: the saved choice, else the laptop's setting
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("airsense-theme"); } catch (e) {}
+      document.documentElement.dataset.theme = t || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    })();
+  </script>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..100,400..900&display=swap">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
-      <a class="wordmark" href="index.html">AirSense</a>
-      <p class="tagline">Air quality for the next 24 hours in 14 Indian cities</p>
+    <a class="brand" href="index.html" aria-label="AirSense home">
+      <img src="assets/icon.svg" alt="" width="34" height="34">
+      <span class="wordmark">AirSense</span>
+    </a>
+    <div class="top-actions">
+      <nav class="topnav" id="topnav" aria-label="Pages">
+        <a href="index.html" aria-current="page">Forecast</a>
+        <a href="pipeline.html">Pipeline console</a>
+      </nav>
+      <button id="theme-toggle" class="icon-btn" type="button"></button>
+      <button id="menu-toggle" class="icon-btn menu-btn" type="button" aria-label="Pages" aria-controls="topnav" aria-expanded="false"></button>
     </div>
-    <nav class="topnav" aria-label="Pages">
-      <a href="index.html" aria-current="page">Forecast</a>
-      <a href="pipeline.html">Pipeline console</a>
-    </nav>
+    <p class="tagline">Air quality for the next 24 hours in 14 Indian cities</p>
+    <div class="freshness">
+      <span id="asof">Loading…</span>
+      <button id="refresh" class="ghost" type="button">Refresh</button>
+    </div>
   </header>
 
   <main>
     <div id="banner" class="banner" role="alert" hidden></div>
 
-    <p class="intro">Pick a city to see its 24-hour forecast and what to do about it.</p>
-
-    <section class="phone-controls" aria-label="Choose city and advice">
-      <label class="field">City
-        <select id="city-select" autocomplete="off"></select>
-      </label>
-      <label class="field">Advice for
-        <select id="group-select" autocomplete="off">
-          <option value="general">General public</option>
-          <option value="sensitive">Children, elderly, heart or lung conditions</option>
-          <option value="outdoor_workers">Outdoor workers and exercise</option>
-        </select>
-      </label>
-    </section>
-
-    <section class="controls" aria-label="Settings">
-      <fieldset class="groups">
-        <legend>Advice for</legend>
-        <label><input type="radio" name="group" value="general" checked autocomplete="off"><span>General public</span></label>
-        <label><input type="radio" name="group" value="sensitive" autocomplete="off"><span>Children, elderly, heart or lung conditions</span></label>
-        <label><input type="radio" name="group" value="outdoor_workers" autocomplete="off"><span>Outdoor workers and exercise</span></label>
-      </fieldset>
-      <div class="freshness">
-        <span id="asof">Loading…</span>
-        <button id="refresh" type="button">Refresh</button>
-      </div>
-    </section>
+    <label class="field phone-only">City
+      <select id="city-select" autocomplete="off"></select>
+    </label>
 
     <section class="tiles-section" aria-labelledby="cities-h">
-      <h2 id="cities-h" class="section-h">Choose a city</h2>
+      <div class="section-top">
+        <h2 id="cities-h" class="section-h">Choose a city</h2>
+        <p class="section-note">24-hour average PM2.5 in µg/m³, most polluted first</p>
+      </div>
       <div id="cities" class="cities" role="list"></div>
     </section>
 
     <section id="detail" class="detail" aria-live="polite" hidden></section>
 
-    <section id="overview" class="overview" aria-labelledby="overview-h" hidden>
-      <h2 id="overview-h" class="section-h">Across India right now</h2>
-      <p id="overview-text"></p>
-      <div id="overview-bar" class="catbar" role="img"></div>
-      <ol id="overview-list" class="ranked"></ol>
+    <section id="overview" class="card overview" aria-labelledby="overview-h" hidden>
+      <div class="section-top">
+        <h2 id="overview-h" class="section-h">Across India right now</h2>
+        <p class="section-note">Select a city's bar to open it</p>
+      </div>
+      <div id="overview-callouts" class="callouts"></div>
+      <div class="india-grid">
+        <div>
+          <h3 class="chart-h">Cities, most polluted first</h3>
+          <div class="chart-box india"><canvas id="india-chart" role="img"></canvas></div>
+        </div>
+        <div>
+          <h3 class="chart-h">Cities per category</h3>
+          <div class="chart-box cats"><canvas id="category-chart" role="img"></canvas></div>
+          <p class="section-note">Select a category to highlight its cities; select it again to clear.</p>
+        </div>
+      </div>
     </section>
 
-    <details class="help">
+    <details class="card help">
       <summary>How to read this page</summary>
       <div class="help-body">
-        <p><strong>PM2.5</strong> are fine particles in the air, small enough to reach deep into the lungs. Values are the average over the last 24 hours, in micrograms per cubic metre (µg/m³), as used by India's official Air Quality Index (AQI).</p>
+        <div class="help-text">
+          <p><strong>PM2.5</strong> are fine particles in the air, small enough to reach deep into the lungs. Values are the average over the last 24 hours, in micrograms per cubic metre (µg/m³), as used by India's official Air Quality Index (AQI).</p>
+          <p><strong>The forecast</strong> shows the expected 24-hour average for each of the next 24 hours. It changes slowly because each new hour replaces only one of the 24 hours being averaged. Hover over the hour strip or the chart to see each hour.</p>
+          <p><strong>Why this forecast</strong> lists the six inputs that pushed the forecast up or down the most, in µg/m³, and the combined effect of all the others.</p>
+          <p><strong>Notes</strong> appear when some input data was missing; the forecast is still made, but may be less accurate. If no forecast is shown, the latest measurement is too old or missing.</p>
+        </div>
         <table class="aqi-table">
-          <thead><tr><th>Category</th><th>PM2.5 (24-hour average)</th><th>Possible health impact</th></tr></thead>
+          <caption>India's AQI categories for PM2.5</caption>
+          <thead><tr><th scope="col">Category</th><th scope="col">24-hour average</th><th scope="col">Possible health impact</th></tr></thead>
           <tbody id="aqi-rows"></tbody>
         </table>
-        <p><strong>The forecast</strong> shows the expected 24-hour average for each of the next 24 hours. It changes slowly because each new hour replaces only one of the 24 hours being averaged.</p>
-        <p><strong>Why this forecast</strong> lists the inputs that pushed the forecast up or down the most, in µg/m³.</p>
-        <p><strong>Notes</strong> appear when some input data was missing; the forecast is still made, but may be less accurate. If no forecast is shown, the latest measurement is too old or missing.</p>
       </div>
     </details>
   </main>

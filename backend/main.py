@@ -84,6 +84,7 @@ class Forecast(BaseModel):
     forecast: list[Hour] = []
     worst_next_24h: dict | None = None
     explanation: list[Factor] = []
+    explanation_other_ug_m3: float | None = None  # all factors not listed, combined
     guidance: Guidance | None = None
     warnings: list[str] = []
     model_latency_ms: float | None = None

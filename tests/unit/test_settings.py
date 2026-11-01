@@ -22,7 +22,7 @@ def test_environment_overrides_addresses(monkeypatch):
     p = settings.load_params(ROOT)
     assert p["serving"]["model_server_url"] == "http://model-server:5002"
     assert p["guidance"]["qdrant_url"] == "http://qdrant:6333"
-    assert p["serving"]["top_factors"] == 4  # everything else from params.yaml
+    assert p["serving"]["top_factors"] == 6  # everything else from params.yaml
 
 
 def test_feature_store_redis_address(tmp_path, monkeypatch):

@@ -9,7 +9,8 @@ One request for a city:
   3. 24 input rows built exactly as in training (assemble.build_rows);
   4. the MLflow model server (champion) predicts; to_level() turns the predicted
      change into PM2.5; each value gets its CPCB AQI category;
-  5. explanation: top factors from SHAP of the same champion version;
+  5. explanation: top factors from SHAP of the same champion version (inputs
+     missing in this forecast are not listed), plus "all other factors";
   6. health guidance from Qdrant for the worst category of the next 24 hours.
 """
 
@@ -29,7 +30,7 @@ import pandas as pd
 from airsense.common.settings import PROJECT_ROOT, feature_store, load_params
 from airsense.features.build_features import weather_features
 from airsense.serving.assemble import aqi_name, build_rows
-from airsense.serving.explain import top_factors
+from airsense.serving.explain import explain, missing_note
 from airsense.training.train import to_level
 
 log = logging.getLogger(__name__)
@@ -255,13 +256,16 @@ class ForecastService:
         """The newest saved Open-Meteo forecast, as weather features."""
         files = sorted(SNAPSHOT_DIR.glob("*/*.csv"))
         if not files:
-            return None, "weather forecast unavailable (no saved forecast either)"
+            return (
+                None,
+                "The weather forecast is unavailable (no saved forecast either).",
+            )
         raw = pd.read_csv(files[-1])
         raw["time_utc"] = pd.to_datetime(raw["time_utc"], utc=True)
         fetched = pd.Timestamp(raw.pop("fetched_at_utc").iloc[0]).tz_convert(IST)
         note = (
-            "live weather forecast unavailable; using the forecast fetched "
-            f"{fetched:%a %d %b %H:%M} IST"
+            "The live weather forecast is unavailable, so this forecast uses the "
+            f"weather forecast fetched {fetched:%a %-d %b, %H:%M} IST."
         )
         return weather_features(raw, self.params["features"]), note
 
@@ -336,7 +340,7 @@ class ForecastService:
         )
         empty = [f for f in self.features if f in feats and feats[f] is None]
         if empty:
-            out["warnings"].append(f"PM2.5 history missing for: {', '.join(empty)}")
+            out["warnings"].append(missing_note(empty))
         if missing:
             # The model was trained with complete weather, and its input schema
             # stores humidity and cloud cover as integers, which cannot be empty.
@@ -363,7 +367,9 @@ class ForecastService:
         if len(pm25) != len(rows) or not np.isfinite(pm25).all():
             return {**out, "available": False, "reason": "model gave no valid forecast"}
         if (pm25 < 0).any():  # a predicted fall larger than the current value
-            out["warnings"].append("negative forecasts set to 0")
+            out["warnings"].append(
+                "Some hours were forecast below zero; they are shown as 0."
+            )
             pm25 = np.clip(pm25, 0, None)
 
         hours = [
@@ -378,12 +384,15 @@ class ForecastService:
         ]
         worst = max(hours, key=lambda x: x["pm25"])
         contrib = self.booster.predict(rows, pred_contrib=True)
+        # inputs with no value in any of the 24 rows are not shown as factors
+        absent = {f for f in self.features if f in rows and rows[f].isna().all()}
+        why = explain(contrib, self.features, self.cfg["top_factors"], absent)
         guidance = []
         try:
             guidance = self.guidance(worst["aqi_category"], group)
         except Exception as exc:  # noqa: BLE001 - forecast still useful without it
             log.warning("Guidance unavailable for %s: %s", city, exc)
-            out["warnings"].append("health advice service unavailable right now")
+            out["warnings"].append("Health advice is unavailable right now.")
         return {
             **out,
             "available": True,
@@ -399,7 +408,8 @@ class ForecastService:
             "worst_next_24h": {
                 k: worst[k] for k in ("time_ist", "pm25", "aqi_category")
             },
-            "explanation": top_factors(contrib, self.features, self.cfg["top_factors"]),
+            "explanation": why["factors"],
+            "explanation_other_ug_m3": why["other_ug_m3"],
             "guidance": guidance[0] if guidance else None,
             "model_latency_ms": round(latency_ms, 1),
         }

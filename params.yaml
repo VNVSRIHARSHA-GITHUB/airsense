@@ -124,7 +124,7 @@ serving:                         # Stage 6 backend
   weather_timeout_seconds: 10    # one Open-Meteo attempt per request, then the saved forecast
   weather_past_days: 2           # past hours needed for "now" weather and 24 h rain
   weather_forecast_days: 3       # covers t+24 h for every city
-  top_factors: 4                 # factors shown in the explanation
+  top_factors: 6                 # factors shown in the explanation (plus "all other factors")
   pipeline_cache_seconds: 60     # console data rebuilt at most once a minute
   dvc_status_timeout_seconds: 60 # dvc status for the console gives up after this
   airflow_url: http://localhost:8081   # Airflow UI, linked from the console (Stage 9)

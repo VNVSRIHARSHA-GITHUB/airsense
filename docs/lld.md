@@ -51,7 +51,7 @@ flowchart LR
 | Guidance index | `src/airsense/guidance/index.py`, `guidance_docs/` | Builds (DVC stage `guidance_index`) and searches the health-advice collection | `guidance_docs/*.md` | Qdrant collection `guidance`, `data/interim/guidance_index.json` |
 | Pipeline status | `src/airsense/serving/pipeline.py` | Read-only summary for the operators' console: steps and graph, `dvc status`, step reports, throughput, gate, registry, collection health, recent log problems; cached 60 s | `dvc.yaml`, `data/interim/*.json`, snapshot folder, `logs/*.log` | — |
 | Settings | `src/airsense/common/settings.py` | One place for the project folder, `params.yaml` with environment overrides, and the Feast store with the Redis address; the same code runs on the laptop and in the containers | `params.yaml`, `feature_repo/feature_store.yaml`, environment | — |
-| Web pages | `frontend/` (HTML, CSS, JavaScript, Chart.js included) | Forecast page for users, Pipeline console for operators; call the API over HTTP only | the API | — |
+| Web pages | `frontend/` (HTML, CSS, JavaScript, Chart.js included) | Forecast page for users, Pipeline console (four tabs) for operators; light and dark theme; one time format ("Mon 2 Nov, 11:00 IST"); call the API over HTTP only | the API | browser storage: the theme choice only |
 
 **Why two serving processes.** The model server is MLflow's standard way to serve a
 registered model; it knows nothing about cities, weather or users. The backend owns
@@ -118,7 +118,8 @@ documented interactively at `/docs` (OpenAPI, generated from the schemas in
 | `forecast[].pm25` | float | µg/m³, ≥ 0 | forecast 24-hour average PM2.5 |
 | `forecast[].aqi_category` | string | CPCB category | of the forecast value |
 | `worst_next_24h` | object | `time_ist`, `pm25`, `aqi_category` | the highest forecast hour |
-| `explanation[]` | list (≤ 4) | `factor`, `effect_ug_m3`, `direction` (`raises` · `lowers`) | inputs that moved this forecast most (§3.6) |
+| `explanation[]` | list (≤ 6) | `factor`, `effect_ug_m3`, `direction` (`raises` · `lowers`) | inputs that moved this forecast most (§3.6) |
+| `explanation_other_ug_m3` | float or null | µg/m³ | all other inputs combined, so the listed factors plus this add up (§3.6) |
 | `guidance` | object or null | `category`, `pm25_range`, `group`, `text`, `sources[]`, `score` | advice for the worst category and the chosen group |
 | `warnings[]` | list of strings | — | anything degraded (§6) |
 | `model_latency_ms` | float | ms | time of the model-server call |
@@ -142,16 +143,18 @@ Example (shortened; real response, 23 Oct 2026):
   ],
   "worst_next_24h": {"time_ist": "Sat 24 Oct 05:00", "pm25": 231.2, "aqi_category": "Very Poor"},
   "explanation": [
-    {"factor": "change over the last 1h", "effect_ug_m3": 8.5, "direction": "raises"},
-    {"factor": "city", "effect_ug_m3": 3.3, "direction": "raises"},
-    {"factor": "PM2.5 12h ago", "effect_ug_m3": -2.7, "direction": "lowers"},
-    {"factor": "PM2.5 6h ago", "effect_ug_m3": -2.3, "direction": "lowers"}
+    {"factor": "change over the last 1 hour", "effect_ug_m3": 8.5, "direction": "raises"},
+    {"factor": "this city's usual level", "effect_ug_m3": 3.3, "direction": "raises"},
+    {"factor": "PM2.5 12 hours ago", "effect_ug_m3": -2.7, "direction": "lowers"},
+    {"factor": "PM2.5 6 hours ago", "effect_ug_m3": -2.3, "direction": "lowers"},
+    "... 2 more ..."
   ],
+  "explanation_other_ug_m3": -0.9,
   "guidance": {"category": "Very Poor", "group": "sensitive", "pm25_range": "121-250 µg/m³ (24-hour average)",
                "text": "Children, older adults and people with asthma, heart or lung disease should stay indoors ...",
                "sources": ["CPCB, National Air Quality Index (2014) ...", "WHO, Global Air Quality Guidelines (2021) ..."],
                "score": 0.724},
-  "warnings": ["PM2.5 history missing for: pm25_lag_48h"],
+  "warnings": ["Some past readings are missing (PM2.5 48 hours ago), so this forecast may be less accurate."],
   "model_latency_ms": 11.3
 }
 ```
@@ -175,9 +178,9 @@ When no forecast is possible:
   - `stages[]`: `{name, cmd, status, reasons[], last_run_utc, report_file, report}`, where `status` is `up to date`, `changed` (with the changed inputs as reasons), `runs every time` or `unknown` (if `dvc status` failed, e.g. while a pipeline run holds DVC's lock);
   - `edges[]`: `[from, to]` pairs, derived from `dvc.yaml` (an output of one step is an input of the other);
   - `throughput[]`: `{stage, rows, seconds, rows_per_second}` from each step's report;
-  - `collection`: last snapshot time and age, snapshots in the last 24 h (48 expected), gaps longer than 45 min, snapshot times;
+  - `collection`: last snapshot time and age, snapshots in the last 24 h (48 expected), gaps longer than 45 min (`{from_utc, to_utc, minutes, ongoing}`; the start of the 24-hour window and "now" count as edges, so a stopped collector shows as an ongoing gap), snapshot times;
   - `recent_problems[]`: the newest WARNING/ERROR lines of `logs/*.log`;
-  - `workflows[]`: `{dag_id, state, run_type, end_utc, minutes_ago, url}`, the latest run of each Airflow workflow, read from `logs/airflow_runs.json` (written by the DAGs when a run ends; Stage 9), and `airflow_url` for the links.
+  - `workflows[]`: `{dag_id, state, run_type, start_utc, end_utc, minutes_ago, duration_min, url}`, the latest run of each Airflow workflow, read from `logs/airflow_runs.json` (written by the DAGs when a run ends; Stage 9), and `airflow_url` for the links.
   The result is cached for `serving.pipeline_cache_seconds` (60), so console refreshes do not run `dvc status` each time.
 
 ---
@@ -257,8 +260,8 @@ pool). `feast_online` runs every 30 minutes (Airflow `airsense_live`).
   settings of the training download (60 s, 3 attempts) would keep a user waiting
   for minutes.
 - If the call fails, the service uses the **newest saved forecast snapshot** (below)
-  and adds the note "live weather forecast unavailable; using the forecast fetched
-  …". One fetch covers three days, so a snapshot from earlier the same day still
+  and adds the note "The live weather forecast is unavailable, so this forecast uses
+  the weather forecast fetched …". One fetch covers three days, so a snapshot from earlier the same day still
   covers the next 24 hours. The live call is retried after
   `serving.weather_retry_minutes` (5).
 - Every successful fetch is saved to `data/raw/live/openmeteo/<date>/<HHMM>.csv`.
@@ -288,9 +291,16 @@ category selects the guidance.
 
 `booster.predict(rows, pred_contrib=True)` gives TreeSHAP values per row and feature
 (the last column, the bias, is dropped). Values are averaged over the 24 rows,
-features with one meaning are merged (wind direction sin + cos), and the 4 with the
-largest absolute mean are returned with a plain-language name
-(`pm25_lag_12h` → "PM2.5 12h ago", `wind_speed_10m_target` → "wind speed expected").
+features with one meaning are merged (wind direction sin + cos), and the 6
+(`serving.top_factors`) with the largest absolute mean are returned with a
+plain-language name (`pm25_lag_12h` → "PM2.5 12 hours ago", `wind_speed_10m_target` →
+"expected wind speed", `rain_24h_target` → "expected rain (24-hour total)"). Inputs
+that are empty in all 24 rows (a missing reading) are not listed: the model still
+gives them an effect, but "PM2.5 6 hours ago raises the forecast" would be misleading
+when that reading does not exist. Everything not listed is summed into
+`explanation_other_ug_m3`. With about 38 factors and at most the PM2.5 history
+missing, at least 6 always remain (unit test). Until 1 Nov 2026 the top 4 were shown,
+missing inputs included.
 In change mode a factor's effect is its contribution to the predicted **change** from
 the current value, in µg/m³.
 
@@ -394,13 +404,13 @@ one loaded). In Stage 9 the restart becomes part of the automated pipeline.
 | No current PM2.5 value (station outage, empty or NaN) | 200, `available: false`, "no current PM2.5 value for this city" | `ForecastService.forecast` |
 | Current value older than 4 h (collection stopped, online store not refreshed) | 200, `available: false`, "latest PM2.5 value is X h old (limit 4 h)" | same |
 | City configured but not known to the model | 200, `available: false`, "city not known to the model" | same |
-| Some PM2.5 history empty (collection gap) | forecast made; warning "PM2.5 history missing for: …" | same |
+| Some PM2.5 history empty (collection gap) | forecast made; note "Some past readings are missing (PM2.5 6 hours ago …), so this forecast may be less accurate."; those inputs are left out of the explanation | same |
 | Weather provider down or slow (> 10 s) | forecast made with the newest saved weather forecast; note "live weather forecast unavailable; using the forecast fetched …"; live call retried after 5 min | `weather_table`, `saved_weather` |
 | Weather missing for any of the 25 hours (no usable saved forecast either) | 200, `available: false`, "weather forecast missing for N of 25 hours needed" | `ForecastService.forecast` |
 | Model server down, slow (> 10 s) or rejecting the input | 503 "Model server unavailable"; the cause, including MLflow's explanation (e.g. a schema mismatch), is logged | `ModelServerClient` → `main.py` |
 | Model returns a non-finite value | 200, `available: false`, "model gave no valid forecast" | `ForecastService.forecast` |
 | Forecast below 0 | values set to 0; warning | same |
-| Qdrant down or embedding model missing | forecast made with `guidance: null` and the warning "health advice service unavailable right now" (the cause only in the log); `/guidance` → 503 | `forecast`, `main.py` |
+| Qdrant down or embedding model missing | forecast made with `guidance: null` and the note "Health advice is unavailable right now." (the cause only in the log); `/guidance` → 503 | `forecast`, `main.py` |
 | Redis (online store) not reachable | within a second: 503 "Live data store unavailable" for `/forecast` and `/cities`; `/health` reports `feature_store: false` | `live_features` (`FeatureStoreDown`) → `main.py` |
 | `dvc status` fails or times out | `/pipeline` shows every step as `unknown` and the error | `PipelineStatus.build` |
 | Online store being rewritten (`dvc repro feast_online`) | read retried once; then 503 "Live data (being refreshed) unavailable" for `/forecast` and `/cities` | `live_features` (`FeatureStoreBusy`) → `main.py` |
@@ -427,7 +437,7 @@ moment"); the API's messages say only what is unavailable.
 | `serving.airflow_url` | `http://localhost:8081` | Airflow UI, linked from the console's workflows panel |
 | `serving.dvc_status_timeout_seconds` | 60 | `dvc status` for the console gives up after this |
 | `serving.weather_past_days` / `weather_forecast_days` | 2 / 3 | hours needed for "now", 24-hour rain and *t* + 24 |
-| `serving.top_factors` | 4 | factors in the explanation |
+| `serving.top_factors` | 6 | factors in the explanation (plus "all other factors") |
 | `guidance.docs_dir` | `guidance_docs` | source texts |
 | `guidance.qdrant_url` | `http://localhost:6333` | Qdrant server (a container; the collection is rebuilt by DVC) |
 | `guidance.collection` | `guidance` | collection name |
@@ -490,14 +500,14 @@ hours) and the small embedding model; the model server holds one booster.
 
 | Test file | What it checks |
 |---|---|
-| `tests/unit/test_serving.py` | serving rows equal training rows for the same inputs; missing weather counted and left NaN; empty Feast features become NaN; AQI category edges; factor names and SHAP aggregation |
+| `tests/unit/test_serving.py` | serving rows equal training rows for the same inputs; missing weather counted and left NaN; empty Feast features become NaN; AQI category edges; factor names and SHAP aggregation; missing inputs left out of the explanation and counted in "all other factors"; at least 6 factors with the real input list |
 | `tests/unit/test_service.py` | `ForecastService.forecast` with fake inputs: normal forecast (current + change), stale / missing / NaN current value, city unknown to the model, missing history reported, negative forecast clipped, model server down raises the error the API turns into 503, guidance failure keeps the forecast |
 | `tests/unit/test_guidance.py` | all 6 categories × 3 groups parsed with sources; malformed file rejected; search returns the right category and group (local Qdrant in a temporary folder, deterministic test embedder) |
 | `tests/unit/test_api.py` | every endpoint and response schema; 404 for an unknown city; 422 for invalid values; `available: false` carries a reason; dependency failures give 503, not 500; "live data store" and "being refreshed" give different messages |
 | `tests/unit/test_settings.py` | `params.yaml` with and without environment overrides; the Redis address replaced while its options are kept (no connection made) |
 | `tests/unit/test_service.py` (weather, robustness) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept; an empty integer input gives no forecast; a failed online read is retried once, then reported; an unreachable Redis is reported as "store down"; no technical error text in the warnings |
-| `tests/unit/test_pipeline.py` | steps, reports and graph from a small `dvc.yaml`; status and reasons from `dvc status` output; throughput from different report layouts; gaps in the collection; newest log problems; caching; a failed `dvc status`; Airflow workflows from the runs file (order, age, link; nothing shown without Airflow) |
-| `docs/ui_test_checklist.md` | 29 manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails) |
+| `tests/unit/test_pipeline.py` | steps, reports and graph from a small `dvc.yaml`; status and reasons from `dvc status` output; throughput from different report layouts; gaps in the collection (including a stopped collector as an ongoing gap); newest log problems; caching; a failed `dvc status`; Airflow workflows from the runs file (order, age, run duration, link; nothing shown without Airflow) |
+| `docs/ui_test_checklist.md` | 35 manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails) |
 
 The tests need no network, no running servers and no model download; they run in the
 pre-commit hook with the rest of the quick suite.

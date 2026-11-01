@@ -1,74 +1,74 @@
 // Forecast page: city tiles from /cities, details from /forecast/{city}?group=...
 
 const REFRESH_MS = 10 * 60 * 1000;
-const GROUP_TEXT = {
-  general: "the general public",
-  sensitive: "children, older adults and people with heart or lung conditions",
-  outdoor_workers: "people who work or exercise outdoors",
-};
+const GROUPS = [
+  { id: "general", label: "General public", text: "the general public" },
+  { id: "sensitive", label: "Children, elderly, heart or lung conditions", text: "children, older adults and people with heart or lung conditions" },
+  { id: "outdoor_workers", label: "Outdoor workers and exercise", text: "people who work or exercise outdoors" },
+];
+const groupText = (id) => (GROUPS.find((g) => g.id === id) || GROUPS[0]).text;
 
-// Shown next to the city name as a hint; values are per city (mean of its own stations).
+// Shown with the city name; values are per city (mean of its own stations).
 const STATE_OF = {
   Delhi: "Delhi", Lucknow: "Uttar Pradesh", Patna: "Bihar", Kanpur: "Uttar Pradesh",
   Jaipur: "Rajasthan", Chandigarh: "Chandigarh", Mumbai: "Maharashtra", Ahmedabad: "Gujarat",
   Pune: "Maharashtra", Bengaluru: "Karnataka", Chennai: "Tamil Nadu", Hyderabad: "Telangana",
   Kolkata: "West Bengal", Guwahati: "Assam",
 };
-const REGIONS = ["North", "West", "South", "East"];
 
-const state = { city: null, group: "general", cities: [], chart: null };
+const state = { city: null, group: "general", tab: "advice", cities: [], f: null, chart: null, india: null, cats: null, pickedCat: null };
 
-function cityLabel(name) {
-  const st = STATE_OF[name];
-  return st && st !== name ? `${name} (${st})` : name;
-}
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const hasValue = (c) => c.pm25_24h != null;
+// worst first; cities without a recent value last
+const ranked = () => [...state.cities].sort((a, b) => (hasValue(b) - hasValue(a)) || ((b.pm25_24h || 0) - (a.pm25_24h || 0)));
+const measuredAt = (c) => (c.age_hours == null ? null : new Date(Date.now() - c.age_hours * 3600 * 1000));
 
-function showBanner(text) {
-  const b = document.getElementById("banner");
-  b.textContent = text;
-  b.hidden = !text;
-}
-
-// ---------- city tiles ----------
+// ---------- city tiles and phone dropdown ----------
 
 function renderCities() {
-  const box = document.getElementById("cities");
-  box.replaceChildren(
-    ...state.cities.map((c) => {
+  document.getElementById("cities").replaceChildren(
+    ...ranked().map((c) => {
       const info = aqiInfo(c.aqi_category);
-      const stale = c.pm25_24h == null || (c.age_hours != null && c.age_hours > 4);
-      return el(
-        "button",
-        {
-          class: "city" + (stale ? " stale" : ""),
-          type: "button",
-          role: "listitem",
-          "aria-pressed": String(c.city === state.city),
-          style: `--band:${info.color}`,
-          onclick: () => selectCity(c.city),
-          title: c.age_hours != null ? `Measured ${c.age_hours} h ago` : "No recent measurement",
-        },
+      const known = hasValue(c);
+      const stale = !known || (c.age_hours != null && c.age_hours > 4);
+      const st = STATE_OF[c.city];
+      return el("button", {
+        class: "city" + (stale ? " stale" : ""),
+        type: "button", role: "listitem",
+        "aria-pressed": String(c.city === state.city),
+        style: bandStyle(info),
+        onclick: () => selectCity(c.city),
+        "data-tip": [
+          st && st !== c.city ? `${c.city}, ${st}` : c.city,
+          known ? `${Math.round(c.pm25_24h)} µg/m³, ${info.name}` : "No recent measurement",
+          c.age_hours != null ? `Measured ${fmtWhenAgo(measuredAt(c))}` : null,
+        ].filter(Boolean).join("\n"),
+      },
         el("span", { class: "name" }, c.city),
-        el(
-          "span",
-          { class: "val" },
-          c.pm25_24h == null ? "—" : Math.round(c.pm25_24h),
-          c.pm25_24h == null ? null : el("small", {}, "µg/m³"),
-        ),
-        el("span", { class: "cat" }, c.pm25_24h == null ? "No recent data" : info.name),
+        el("span", { class: "val" }, known ? Math.round(c.pm25_24h) : "—"),
+        el("span", { class: "cat" }, known ? info.name : "No recent data"),
       );
     }),
   );
+}
+
+function renderCitySelect() {
+  const sel = document.getElementById("city-select");
+  sel.replaceChildren(...ranked().map((c) =>
+    el("option", { value: c.city }, hasValue(c) ? `${c.city}: ${Math.round(c.pm25_24h)}, ${c.aqi_category}` : `${c.city}: no recent data`)));
+  sel.value = state.city;
 }
 
 async function loadCities() {
   state.cities = await getJSON("/cities");
   const fresh = state.cities.filter((c) => c.age_hours != null);
   const newest = fresh.length ? Math.min(...fresh.map((c) => c.age_hours)) : null;
-  document.getElementById("asof").textContent =
-    newest == null ? "No recent measurements" : `Latest measurement ${fmtAgo(newest * 60)}`;
+  document.getElementById("asof").textContent = newest == null
+    ? "No recent measurements"
+    : `Latest measurement ${fmtWhenAgo(new Date(Date.now() - newest * 3600 * 1000))}`;
   if (!state.city) {
-    const first = state.cities.find((c) => c.pm25_24h != null) || state.cities[0];
+    const first = ranked().find(hasValue) || state.cities[0];
     state.city = first ? first.city : null;
   }
   renderCities();
@@ -76,317 +76,564 @@ async function loadCities() {
   renderOverview();
 }
 
-// ---------- phone: city dropdown ----------
+// ---------- across India: summary and bar chart ----------
 
-function renderCitySelect() {
-  const sel = document.getElementById("city-select");
-  sel.replaceChildren(
-    ...REGIONS.map((region) =>
-      el(
-        "optgroup",
-        { label: region },
-        state.cities
-          .filter((c) => c.region === region)
-          .map((c) =>
-            el("option", { value: c.city, selected: c.city === state.city ? "selected" : null }, cityLabel(c.city)),
-          ),
-      ),
-    ),
-  );
-  sel.value = state.city;
+// Category names above the chart, between the AQI boundaries.
+const bandEdges = {
+  id: "bandEdges",
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea: a, scales: { x } } = chart;
+    ctx.save();
+    ctx.font = `600 11px ${cssVar("--font")}`;
+    ctx.textBaseline = "bottom";
+    let low = 0;
+    for (const band of AQI) {
+      if (low >= x.max) break;
+      const x1 = x.getPixelForValue(low);
+      const x2 = x.getPixelForValue(Math.min(band.max, x.max));
+      if (low > 0) {
+        ctx.strokeStyle = cssVar("--line-strong");
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.moveTo(x1, a.top - 2); ctx.lineTo(x1, a.bottom); ctx.stroke();
+      }
+      ctx.fillStyle = cssVar("--muted");
+      if (x2 - x1 > ctx.measureText(band.name).width + 10) ctx.fillText(band.name, x1 + 5, a.top - 4);
+      low = band.max;
+    }
+    ctx.restore();
+  },
+  afterDatasetsDraw(chart) {  // the value at the end of each bar
+    const { ctx, scales: { x } } = chart;
+    const meta = chart.getDatasetMeta(0);
+    ctx.save();
+    ctx.textBaseline = "middle";
+    meta.data.forEach((bar, i) => {
+      const v = chart.data.datasets[0].data[i];
+      ctx.fillStyle = v == null ? cssVar("--muted") : cssVar("--ink");
+      ctx.font = v == null ? `italic 12px ${cssVar("--font")}` : `700 12px ${cssVar("--font")}`;
+      ctx.fillText(v == null ? "No recent data" : Math.round(v), v == null ? x.getPixelForValue(0) + 6 : bar.x + 6, bar.y);
+    });
+    ctx.restore();
+  },
+};
+
+function callout(kind, c) {
+  const info = aqiInfo(c.aqi_category);
+  return el("button", {
+    type: "button", class: "callout", style: bandStyle(info), onclick: () => selectCity(c.city, true),
+  },
+    el("span", { class: "callout-kind" }, kind),
+    el("span", { class: "callout-city" }, c.city),
+    el("span", { class: "callout-val" }, hasValue(c) ? `${Math.round(c.pm25_24h)} µg/m³, ${info.name}` : "No recent data"));
 }
-
-// ---------- across India ----------
 
 function renderOverview() {
   const box = document.getElementById("overview");
-  const known = state.cities.filter((c) => c.pm25_24h != null).sort((a, b) => b.pm25_24h - a.pm25_24h);
-  if (!known.length) {
-    box.hidden = true;
-    return;
-  }
+  const order = ranked();
+  const known = order.filter(hasValue);
+  if (!known.length) { box.hidden = true; return; }
   box.hidden = false;
-  const worst = known[0];
-  const best = known[known.length - 1];
-  const missing = state.cities.length - known.length;
-  document.getElementById("overview-text").textContent =
-    `Most polluted: ${worst.city}, ${Math.round(worst.pm25_24h)} µg/m³ (${worst.aqi_category}). ` +
-    `Cleanest: ${best.city}, ${Math.round(best.pm25_24h)} µg/m³ (${best.aqi_category}).` +
-    (missing ? ` No recent data for ${missing} ${missing === 1 ? "city" : "cities"}.` : "");
-
-  const counts = AQI.map((a) => ({ ...a, n: known.filter((c) => c.aqi_category === a.name).length })).filter((a) => a.n);
-  const bar = document.getElementById("overview-bar");
-  bar.setAttribute("aria-label", counts.map((a) => `${a.n} ${a.name}`).join(", "));
-  bar.replaceChildren(...counts.map((a) => el("span", { style: `background:${a.color};flex:${a.n}`, title: `${a.n} ${a.name}` })));
-  const legend = el("div", { class: "catbar-legend" },
-    counts.map((a) => el("span", {}, el("span", { class: "swatch", style: `background:${a.color}` }), `${a.n} ${a.name}`)));
-  const old = box.querySelector(".catbar-legend");
-  if (old) old.replaceWith(legend); else bar.after(legend);
-
-  document.getElementById("overview-list").replaceChildren(
-    ...[...known, ...state.cities.filter((c) => c.pm25_24h == null)].map((c) => {
-      const info = aqiInfo(c.aqi_category);
-      return el("li", {},
-        el("button", { type: "button", onclick: () => selectCity(c.city, true) },
-          el("span", { class: "dot", style: `--band:${info.color}` }),
-          el("span", {}, c.city, el("span", { class: "rs" }, c.pm25_24h == null ? "No recent data" : info.name)),
-          el("span", { class: "rv" }, c.pm25_24h == null ? "—" : Math.round(c.pm25_24h))));
-    }),
+  const missing = order.filter((c) => !hasValue(c));
+  document.getElementById("overview-callouts").replaceChildren(
+    callout("Most polluted", known[0]),
+    callout("Cleanest", known[known.length - 1]),
+    missing.length
+      ? el("div", { class: "callout muted-callout" },
+          el("span", { class: "callout-kind" }, "No recent data"),
+          el("span", { class: "callout-city" }, missing.map((c) => c.city).join(", ")),
+          el("span", { class: "callout-val" }, "Skipped until new measurements arrive"))
+      : null,
   );
+
+  drawCategories(order);
+  const canvas = document.getElementById("india-chart");
+  canvas.parentElement.style.height = `${order.length * 30 + 40}px`;
+  canvas.setAttribute("aria-label", "Cities by 24-hour average PM2.5: " +
+    order.map((c) => `${c.city} ${hasValue(c) ? Math.round(c.pm25_24h) : "no data"}`).join(", "));
+  if (state.india) state.india.destroy();
+  const max = Math.max(...known.map((c) => c.pm25_24h));
+  state.india = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: order.map((c) => c.city),
+      datasets: [{
+        data: order.map((c) => c.pm25_24h),
+        // a chosen category keeps its colour; the other cities fade
+        backgroundColor: order.map((c) => aqiInfo(c.aqi_category).color +
+          (state.pickedCat && (c.aqi_category || "No data") !== state.pickedCat ? "40" : "")),
+        borderRadius: 4, borderSkipped: false, barPercentage: 0.78, categoryPercentage: 0.92,
+      }],
+    },
+    options: {
+      indexAxis: "y", maintainAspectRatio: false, animation: false,
+      layout: { padding: { top: 18, right: 34 } },
+      scales: {
+        x: { min: 0, max: Math.ceil((max * 1.06) / 50) * 50, grid: { display: false }, border: { display: false },
+          ticks: { color: cssVar("--muted"), callback: (v) => fmtNum(v) }, title: { display: true, text: "24-hour average PM2.5 (µg/m³)", color: cssVar("--muted") } },
+        y: { grid: { display: false }, border: { display: false }, ticks: { color: cssVar("--ink"), font: { weight: 600 } } },
+      },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      onClick: (e, els) => { if (els.length) selectCity(order[els[0].index].city, true); },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
+    },
+    plugins: [bandEdges],
+  });
 }
 
-// ---------- detail ----------
+// Cities per category: "No data" first, set apart by a dashed line, then Good → Severe.
+const splitNoData = {
+  id: "splitNoData",
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea: a, scales: { x } } = chart;
+    const px = (x.getPixelForValue(0) + x.getPixelForValue(1)) / 2;
+    ctx.save();
+    ctx.strokeStyle = cssVar("--line-strong");
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom + 22); ctx.stroke();
+    ctx.restore();
+  },
+  afterDatasetsDraw(chart) {  // the count on top of each bar
+    const { ctx } = chart;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.font = `800 13px ${cssVar("--font")}`;
+    ctx.fillStyle = cssVar("--ink");
+    chart.getDatasetMeta(0).data.forEach((bar, i) => ctx.fillText(chart.data.datasets[0].data[i], bar.x, bar.y - 6));
+    ctx.restore();
+  },
+};
+
+function drawCategories(order) {
+  const groups = [NO_DATA, ...AQI].map((a) => ({
+    ...a, cities: order.filter((c) => (hasValue(c) ? c.aqi_category === a.name : a === NO_DATA)).map((c) => c.city),
+  }));
+  const canvas = document.getElementById("category-chart");
+  canvas.setAttribute("aria-label", "Number of cities per AQI category: " +
+    groups.map((g) => `${g.name} ${g.cities.length}`).join(", "));
+  if (state.cats) state.cats.destroy();
+  state.cats = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: groups.map((g) => g.name),
+      datasets: [{
+        data: groups.map((g) => g.cities.length),
+        backgroundColor: groups.map((g) => g.color + (state.pickedCat && g.name !== state.pickedCat ? "40" : "")),
+        borderRadius: 5, barPercentage: 0.75, minBarLength: 3,
+      }],
+    },
+    options: {
+      maintainAspectRatio: false, animation: false,
+      layout: { padding: { top: 20 } },
+      scales: {
+        y: { beginAtZero: true, suggestedMax: Math.max(...groups.map((g) => g.cities.length)) + 1,
+          ticks: { precision: 0, stepSize: 1, color: cssVar("--muted") }, grid: { color: cssVar("--grid") }, border: { display: false },
+          title: { display: true, text: "Number of cities", color: cssVar("--muted") } },
+        x: { grid: { display: false }, ticks: { color: cssVar("--ink"), font: { weight: 600, size: canvas.parentElement.clientWidth < 500 ? 10 : 12 }, maxRotation: 0, autoSkip: false,
+          callback: (v, i) => ({ Satisfactory: ["Satis-", "factory"], Moderate: canvas.parentElement.clientWidth < 500 ? ["Mode-", "rate"] : null }[groups[i].name] || groups[i].name.split(" ")) }, border: { color: cssVar("--line") } },
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: cssVar("--tip-bg"), titleColor: cssVar("--tip-ink"), bodyColor: cssVar("--tip-ink"), displayColors: false,
+          callbacks: {
+            title: (items) => `${groups[items[0].dataIndex].name}: ${groups[items[0].dataIndex].cities.length} ${groups[items[0].dataIndex].cities.length === 1 ? "city" : "cities"}`,
+            label: (c) => groups[c.dataIndex].cities.join(", ") || "none right now",
+            footer: (items) => (state.pickedCat === groups[items[0].dataIndex].name ? "Select again to clear" : "Select to highlight these cities"),
+          },
+        },
+      },
+      onClick: (e, els) => {
+        if (!els.length) return;
+        const name = groups[els[0].index].name;
+        state.pickedCat = state.pickedCat === name ? null : name;  // a second click clears it
+        setTimeout(renderOverview);  // not inside the chart's own click handler: redrawing destroys it
+      },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? "pointer" : "default"; },
+    },
+    plugins: [splitNoData],
+  });
+}
+
+// ---------- detail: reading, summary, hours, chart ----------
+
+// Where a value sits on the AQI scale: equal-width segments, position inside one.
+function scalePosition(v) {
+  let low = 0;
+  for (let i = 0; i < AQI.length; i++) {
+    const high = AQI[i].max === Infinity ? 380 : AQI[i].max;
+    if (v <= high || i === AQI.length - 1) {
+      const within = Math.min(1, Math.max(0, (v - low) / (high - low)));
+      return ((i + within) / AQI.length) * 100;
+    }
+    low = high;
+  }
+  return 100;
+}
 
 function readingBlock(f) {
   const info = aqiInfo(f.current.aqi_category);
-  return el(
-    "div",
-    { class: "reading", style: `--band:${info.color};--band-ink:${info.ink}` },
-    el("p", { class: "where" }, `${f.city} now`),
+  const st = STATE_OF[f.city];
+  return el("div", { class: "reading", style: bandStyle(info) },
+    el("p", { class: "where" }, f.city, st && st !== f.city ? el("span", {}, st) : null),
     el("p", { class: "big" }, Math.round(f.current.pm25_24h), el("small", {}, "µg/m³")),
     el("p", { class: "catname" }, info.name),
-    el(
-      "p",
-      { class: "meta" },
-      `24-hour average as of ${f.current.time_ist} IST, from ${f.current.stations} stations, ` +
-        `measured ${fmtAgo(f.current.age_hours * 60)}`,
-    ),
+    el("div", { class: "scale", role: "img", "aria-label": `${info.name} on India's AQI scale` },
+      AQI.map((a) => el("span", { class: a.name === info.name ? "on" : "", style: `background:${a.color}` })),
+      el("i", { style: `left:${scalePosition(f.current.pm25_24h)}%` })),
+    el("p", { class: "meta" }, `24-hour average, ${fmtWhen(f.current.time_utc)}`),
   );
+}
+
+function stat(label, value, sub) {
+  return el("div", { class: "stat" }, el("dt", {}, label), el("dd", {}, el("strong", {}, value), el("span", {}, sub)));
 }
 
 function summaryBlock(f) {
-  const w = f.worst_next_24h;
-  const now = aqiInfo(f.current.aqi_category);
-  const worst = aqiInfo(w.aqi_category);
+  const now = f.current.pm25_24h;
+  const hi = f.forecast.reduce((a, b) => (b.pm25 > a.pm25 ? b : a));
+  const lo = f.forecast.reduce((a, b) => (b.pm25 < a.pm25 ? b : a));
   const last = f.forecast[f.forecast.length - 1];
-  const trend =
-    last.pm25 > f.current.pm25_24h + 5 ? "rising" : last.pm25 < f.current.pm25_24h - 5 ? "falling" : "about the same";
-  const headline =
-    worst.name === now.name
+  const nowCat = aqiInfo(f.current.aqi_category);
+  const worst = aqiInfo(hi.aqi_category);
+  const change = last.pm25 - now;
+  const pct = now > 0 ? (change / now) * 100 : 0;
+  const sign = (x) => (Math.round(x) > 0 ? "+" : Math.round(x) < 0 ? "−" : "");
+  const trend = change > 5 ? "rising" : change < -5 ? "falling" : "about the same";
+  return el("div", { class: "summary" },
+    el("h3", {}, worst.name === nowCat.name
       ? `Expected to stay ${worst.name} for the next 24 hours`
-      : `Expected to reach ${worst.name} in the next 24 hours`;
-  return el(
-    "div",
-    { class: "summary" },
-    el("h3", {}, headline),
-    el("p", {}, `Highest: ${Math.round(w.pm25)} µg/m³ around ${w.time_ist} IST. ` +
-      `By ${last.time_ist} IST the 24-hour average is expected to be ${trend} (${Math.round(last.pm25)} µg/m³).`),
-    el("p", {}, worst.advice + "."),
+      : `Expected to reach ${worst.name} in the next 24 hours`),
+    el("dl", { class: "stats" },
+      stat("Highest", `${Math.round(hi.pm25)} µg/m³`, fmtWhen(hi.time_utc)),
+      stat("Lowest", `${Math.round(lo.pm25)} µg/m³`, fmtWhen(lo.time_utc)),
+      stat("Change over 24 hours", `${sign(change)}${Math.abs(Math.round(change))} µg/m³ (${sign(pct)}${Math.abs(Math.round(pct))}%)`, `by ${fmtWhen(last.time_utc)}`)),
+    el("p", { class: "trend" }, `By ${fmtWhen(last.time_utc)} the 24-hour average is expected to be ${trend} (${Math.round(last.pm25)} µg/m³).`),
+    el("p", { class: "effect", style: bandStyle(worst) }, el("span", { class: "dot" }), el("span", {},
+      el("strong", {}, worst.name === nowCat.name ? `At ${worst.name}: ` : `If it reaches ${worst.name}: `),
+      `${worst.advice.charAt(0).toLowerCase()}${worst.advice.slice(1)}.`)),
+    el("p", { class: "basis" }, `Measured at ${f.current.stations} stations, ${fmtAgo(f.current.age_hours * 60)}.`),
   );
+}
+
+// Hour strip and chart share one set of times: the measured value, then 24 forecast hours.
+function seriesOf(f) {
+  return [
+    { time: f.current.time_utc, pm25: f.current.pm25_24h, cat: f.current.aqi_category, measured: true },
+    ...f.forecast.map((h) => ({ time: h.time_utc, pm25: h.pm25, cat: h.aqi_category, measured: false })),
+  ];
 }
 
 function stripBlock(f) {
-  const worstTime = f.worst_next_24h.time_ist;
-  const cells = f.forecast.map((h) => {
+  const hours = f.forecast;
+  const narrow = window.innerWidth <= 760;
+  const every = narrow ? 6 : 3;  // a time label every 3 hours (6 on a phone)
+  const cols = hours.map((h, i) => {
     const info = aqiInfo(h.aqi_category);
-    return el("div", {
-      class: "cell" + (h.time_ist === worstTime ? " worst" : ""),
-      style: `--band:${info.color}`,
-      title: `${h.time_ist} IST: ${h.pm25} µg/m³ (${info.name})`,
-      role: "img",
-      "aria-label": `${h.time_ist}: ${info.name}`,
-    });
+    const day = fmtDay(h.time_utc);
+    const newDay = i === 0 || day !== fmtDay(hours[i - 1].time_utc);
+    const labelled = (i + 1) % every === 0;  // the same hours as the chart's labels (its point 0 is the measured value)
+    return el("div", { class: "hour" + (newDay ? " daystart" : "") + (newDay && i > 0 ? " newday" : "") },
+      el("span", { class: "hour-day", "aria-hidden": "true" }, newDay ? day : ""),
+      el("button", {
+        type: "button", class: "cell", style: bandStyle(info),
+        "aria-label": `${fmtWhen(h.time_utc)}: ${Math.round(h.pm25)} µg/m³, ${info.name}`,
+        onpointerenter: () => syncChart(i + 1), onfocus: () => syncChart(i + 1),
+        onpointerleave: () => syncChart(null), onblur: () => syncChart(null),
+      }),
+      el("span", { class: "tick" + (labelled ? " long" : ""), "aria-hidden": "true" }),
+      el("span", { class: "hour-time", "aria-hidden": "true" }, labelled ? fmtClock(h.time_utc) : ""));
   });
-  const hours = f.forecast.map((h, i) =>
-    el("span", {}, i % 3 === 0 ? fmtIST(h.time_utc, { hour: "2-digit", hour12: false }) + "h" : ""),
-  );
-  return el(
-    "div",
-    { class: "strip-wrap" },
-    el("h4", { class: "section-h" }, "Next 24 hours, hour by hour"),
-    el("div", { class: "strip" }, cells),
-    el("div", { class: "strip-hours", "aria-hidden": "true" }, hours),
-  );
+  return el("div", { class: "strip", id: "strip" }, cols);
 }
 
-// Background bands for the AQI categories behind the line chart.
-const aqiBands = {
-  id: "aqiBands",
+function syncChart(index) {
+  const c = state.chart;
+  document.querySelectorAll("#strip .cell").forEach((cell, i) => cell.classList.toggle("active", index != null && i === index - 1));
+  if (!c) return;
+  if (index == null) {
+    c.setActiveElements([]);
+    c.tooltip.setActiveElements([], { x: 0, y: 0 });
+  } else {
+    const p = c.getDatasetMeta(0).data[index];
+    c.setActiveElements([{ datasetIndex: 0, index }]);
+    c.tooltip.setActiveElements([{ datasetIndex: 0, index }], { x: p.x, y: p.y });
+  }
+  c.update("none");
+}
+
+// AQI bands behind the line, day boundaries, peak and low labels, hover line.
+const forecastDecor = {
+  id: "forecastDecor",
   beforeDraw(chart) {
     const { ctx, chartArea: a, scales: { y } } = chart;
+    const alpha = cssVar("--band-alpha") || "22";
     let low = 0;
+    ctx.save();
     for (const band of AQI) {
       const top = Math.min(band.max, y.max);
       if (top > y.min && low < y.max) {
         const y1 = y.getPixelForValue(Math.max(low, y.min));
         const y2 = y.getPixelForValue(top);
-        ctx.save();
-        ctx.fillStyle = band.color + "33";
+        ctx.fillStyle = band.color + alpha;
         ctx.fillRect(a.left, y2, a.right - a.left, y1 - y2);
-        ctx.restore();
+        if (y1 - y2 > 16) {
+          ctx.fillStyle = cssVar("--muted");
+          ctx.font = `600 11px ${cssVar("--font")}`;
+          ctx.textAlign = "right";
+          ctx.fillText(band.name, a.right - 6, y2 + 13);
+        }
       }
       low = band.max;
     }
+    ctx.restore();
+  },
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea: a, scales: { x } } = chart;
+    const times = chart.data.labels;  // ISO times of the points
+    ctx.save();
+    ctx.strokeStyle = cssVar("--line-strong");
+    ctx.fillStyle = cssVar("--muted");
+    ctx.font = `600 11px ${cssVar("--font")}`;
+    ctx.setLineDash([4, 4]);
+    for (let i = 1; i < times.length; i++) {
+      if (fmtDay(times[i]) !== fmtDay(times[i - 1])) {
+        const px = (x.getPixelForValue(i - 1) + x.getPixelForValue(i)) / 2;
+        ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+        ctx.fillText(fmtDay(times[i]), px + 5, a.top + 13);
+      }
+    }
+    const act = chart.getActiveElements();
+    if (act.length) {
+      const px = act[0].element.x;
+      ctx.setLineDash([]);
+      ctx.strokeStyle = cssVar("--ink");
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+    }
+    ctx.restore();
+  },
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    const pts = chart.getDatasetMeta(0).data;
+    const data = chart.data.datasets[0].data;
+    const fc = data.slice(1);
+    const hi = 1 + fc.indexOf(Math.max(...fc));
+    const lo = 1 + fc.indexOf(Math.min(...fc));
+    ctx.save();
+    ctx.font = `700 12px ${cssVar("--font")}`;
+    ctx.textAlign = "center";
+    const tag = (i, text, above, colour) => {
+      const p = pts[i];
+      ctx.fillStyle = colour;
+      ctx.fillText(text, p.x, above ? p.y - 13 : p.y + 23);
+    };
+    tag(hi, `Peak ${Math.round(data[hi])}`, true, cssVar("--raises"));
+    if (lo !== hi) tag(lo, `Low ${Math.round(data[lo])}`, false, cssVar("--lowers"));
+    ctx.restore();
   },
 };
 
 function drawChart(canvas, f) {
   if (state.chart) state.chart.destroy();
-  const values = f.forecast.map((h) => h.pm25);
-  const lo = Math.min(...values, f.current.pm25_24h);
-  const hi = Math.max(...values, f.current.pm25_24h);
-  const pad = Math.max(10, (hi - lo) * 0.6);
+  const series = seriesOf(f);
+  const values = series.map((s) => s.pm25);
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const pad = Math.max(8, (hi - lo) * 0.35);
+  const step = canvas.parentElement.clientWidth < 600 ? 6 : 3;  // fewer labels on a phone
+  const ticks = series.map((s, i) => {
+    if (i % step !== 0) return "";
+    const newDay = i === 0 || fmtDay(s.time) !== fmtDay(series[i - step].time);
+    return newDay ? [fmtClock(s.time), fmtDay(s.time)] : fmtClock(s.time);
+  });
+  const ink = cssVar("--ink");
+  const points = (fn) => series.map((s, i) => fn(s, i));
+  const peak = 1 + values.slice(1).indexOf(Math.max(...values.slice(1)));
+  const low = 1 + values.slice(1).indexOf(Math.min(...values.slice(1)));
   state.chart = new Chart(canvas, {
     type: "line",
     data: {
-      labels: ["now", ...f.forecast.map((h) => fmtIST(h.time_utc, { hour: "2-digit", minute: "2-digit", hour12: false }))],
-      datasets: [
-        {
-          label: "24-hour average PM2.5 (µg/m³)",
-          data: [f.current.pm25_24h, ...values],
-          borderColor: "#1d2733",
-          borderWidth: 2,
-          pointRadius: 3,
-          pointBackgroundColor: [aqiInfo(f.current.aqi_category).color, ...f.forecast.map((h) => aqiInfo(h.aqi_category).color)],
-          pointBorderColor: "#1d2733",
-          tension: 0.25,
-        },
-      ],
+      labels: series.map((s) => s.time),
+      datasets: [{
+        data: values,
+        borderColor: ink, borderWidth: 2, tension: 0.25,
+        pointRadius: points((s, i) => (i === peak || i === low ? 6.5 : 3.5)),
+        pointHoverRadius: points((s, i) => (i === peak || i === low ? 8 : 6)),
+        pointBackgroundColor: points((s) => aqiInfo(s.cat).color),
+        pointBorderColor: points((s, i) => (i === peak ? cssVar("--raises") : i === low ? cssVar("--lowers") : ink)),
+        pointBorderWidth: points((s, i) => (i === peak || i === low ? 3.5 : 1.5)),
+      }],
     },
     options: {
-      maintainAspectRatio: false,
-      animation: false,
+      maintainAspectRatio: false, animation: false,
+      interaction: { mode: "index", intersect: false },
+      layout: { padding: { top: 6, right: 8 } },
       scales: {
-        y: { min: Math.max(0, Math.floor(lo - pad)), max: Math.ceil(hi + pad), title: { display: true, text: "µg/m³" } },
-        x: { ticks: { maxRotation: 0, autoSkipPadding: 12 } },
+        y: {
+          min: Math.max(0, Math.floor((lo - pad) / 10) * 10), max: Math.ceil((hi + pad) / 10) * 10,
+          title: { display: true, text: "µg/m³", color: cssVar("--muted") },
+          ticks: { color: cssVar("--muted"), maxTicksLimit: 6 }, grid: { color: cssVar("--grid") }, border: { display: false },
+        },
+        x: {
+          ticks: { autoSkip: false, maxRotation: 0, color: cssVar("--muted"), callback: (v, i) => ticks[i] },
+          grid: { display: false }, border: { color: cssVar("--line") },
+        },
       },
       plugins: {
         legend: { display: false },
         tooltip: {
+          backgroundColor: cssVar("--tip-bg"), titleColor: cssVar("--tip-ink"), bodyColor: cssVar("--tip-ink"),
+          footerColor: cssVar("--tip-muted"), borderColor: cssVar("--line"), borderWidth: 1,
+          padding: 10, cornerRadius: 8, displayColors: false, caretPadding: 8,
+          titleFont: { weight: 700 }, footerFont: { weight: 400 },
           callbacks: {
-            label: (c) => {
-              const cat = c.dataIndex === 0 ? f.current.aqi_category : f.forecast[c.dataIndex - 1].aqi_category;
-              return ` ${c.parsed.y} µg/m³ (${cat})`;
+            title: (items) => fmtWhen(series[items[0].dataIndex].time),
+            label: (c) => `${Math.round(c.parsed.y)} µg/m³, ${aqiInfo(series[c.dataIndex].cat).name}`,
+            footer: (items) => {
+              const i = items[0].dataIndex;
+              const mark = i === peak ? " (highest)" : i === low ? " (lowest)" : "";
+              if (i === 0) return "Measured (latest 24-hour average)";
+              const d = Math.round(values[i] - values[i - 1]);
+              return `${d > 0 ? "+" : d < 0 ? "−" : "±"}${Math.abs(d)} µg/m³ from the hour before${mark}`;
             },
           },
         },
       },
+      onHover: (e, els) => {
+        const i = els.length ? els[0].index : null;
+        document.querySelectorAll("#strip .cell").forEach((cell, j) => cell.classList.toggle("active", i != null && j === i - 1));
+      },
     },
-    plugins: [aqiBands],
+    plugins: [forecastDecor],
   });
 }
 
-function factorsBlock(f) {
-  if (!f.explanation.length) return el("p", {}, "No explanation available.");
-  const maxAbs = Math.max(...f.explanation.map((x) => Math.abs(x.effect_ug_m3)), 1);
-  return el(
-    "ul",
-    { class: "factors" },
-    f.explanation.map((x) => {
-      const width = (Math.abs(x.effect_ug_m3) / maxAbs) * 50;
-      const sign = x.effect_ug_m3 > 0 ? "+" : "−";
-      return el(
-        "li",
-        {},
-        el("div", {}, x.factor.charAt(0).toUpperCase() + x.factor.slice(1),
-          el("div", { class: "factor-num" }, `${x.direction} the forecast by ${sign}${Math.abs(x.effect_ug_m3).toFixed(1)} µg/m³`)),
-        el("div", { class: "factor-bar", "aria-hidden": "true" },
-          el("span", { class: "mid" }),
-          el("span", { class: `fill ${x.direction}`, style: `width:${width}%` })),
-      );
-    }),
-  );
+// ---------- tabs: what to do, why this forecast ----------
+
+function adviceTab(f) {
+  const chips = el("fieldset", { class: "chips" },
+    el("legend", {}, "Advice for"),
+    GROUPS.map((g) => el("label", {},
+      el("input", { type: "radio", name: "group", value: g.id, checked: g.id === state.group ? "" : null, onchange: () => setGroup(g.id) }),
+      el("span", {}, g.label))));
+  if (!f.guidance) return el("div", { class: "advice" }, chips, el("p", {}, "Health advice is not available right now."));
+  const g = f.guidance;
+  return el("div", { class: "advice", id: "advice" },
+    chips,
+    el("p", { class: "advice-text" }, g.text),
+    el("p", { class: "sources" }, `For ${groupText(g.group)}, at ${g.category} levels (${g.pm25_range}). Based on: ${g.sources.join("; ")}.`));
 }
 
-function adviceBlock(f) {
-  if (!f.guidance) return el("p", {}, "Health advice is not available right now.");
-  const g = f.guidance;
-  return el(
-    "div",
-    { class: "advice" },
-    el("p", {}, g.text),
-    el("p", { class: "sources" }, `For ${GROUP_TEXT[g.group]}, at ${g.category} levels (${g.pm25_range}). Based on: ${g.sources.join("; ")}.`),
-  );
+function factorRow(name, v, maxAbs, extra) {
+  const dir = v > 0 ? "raises" : "lowers";
+  const size = Math.abs(v).toFixed(1);
+  return el("li", {
+    class: "factor" + (extra ? " rest" : ""), tabindex: "0",
+    "data-tip": `${cap(name)}\n${cap(dir)} the forecast by ${size} µg/m³\nAverage over the next 24 hours`,
+  },
+    el("div", { class: "factor-name" }, cap(name), el("span", {}, `${dir} the forecast by ${size} µg/m³`)),
+    el("div", { class: "factor-bar", "aria-hidden": "true" },
+      el("span", { class: "mid" }),
+      el("span", { class: `fill ${dir}`, style: `width:${(Math.abs(v) / maxAbs) * 50}%` })),
+    el("div", { class: `factor-val ${dir}` }, `${v > 0 ? "+" : "−"}${size}`));
+}
+
+function whyTab(f) {
+  if (!f.explanation || !f.explanation.length) return el("p", {}, "No explanation available.");
+  const rest = f.explanation_other_ug_m3;
+  const all = [...f.explanation.map((x) => x.effect_ug_m3), rest || 0];
+  const maxAbs = Math.max(...all.map(Math.abs), 0.5);
+  return el("div", { class: "why" },
+    el("p", { class: "hint" }, "How much each input pushed this forecast up or down, averaged over the next 24 hours."),
+    el("div", { class: "why-key", "aria-hidden": "true" },
+      el("span", {}), el("div", { class: "key-bar" }, el("span", { class: "lowers" }, "← Lowers"), el("span", { class: "raises" }, "Raises →"))),
+    el("ul", { class: "factors" },
+      f.explanation.map((x) => factorRow(x.factor, x.effect_ug_m3, maxAbs)),
+      rest != null ? factorRow("all other factors combined", rest, maxAbs, true) : null));
 }
 
 function notesBlock(f) {
   if (!f.warnings || !f.warnings.length) return null;
-  return el(
-    "div",
-    { class: "notes" },
+  return el("div", { class: "notes", role: "note" },
     el("strong", {}, "Notes on this forecast"),
-    el("ul", {}, f.warnings.map((w) => el("li", {}, w))),
-  );
+    el("ul", {}, f.warnings.map((w) => el("li", {}, w))));
 }
 
 function renderUnavailable(f) {
   const last = state.cities.find((c) => c.city === f.city);
   const info = last ? aqiInfo(last.aqi_category) : null;
-  const nearby = state.cities.filter((c) => c.region === f.region && c.city !== f.city && c.pm25_24h != null);
-  return el(
-    "div",
-    { class: "unavailable" },
+  const nearby = state.cities.filter((c) => c.region === f.region && c.city !== f.city && hasValue(c));
+  return el("div", { class: "unavailable" },
     el("h3", {}, `No forecast for ${f.city} right now`),
-    el("p", {}, `Reason: ${f.reason}. Forecasts are made only from recent measurements, so this city is skipped until new data arrives (usually within an hour).`),
-    last && last.pm25_24h != null
-      ? [
-          el("p", {}, "Last known reading:"),
-          el("span", { class: "last-known", style: `--band:${info.color};--band-ink:${info.ink}` },
-            `${Math.round(last.pm25_24h)} µg/m³, ${info.name}, measured ${fmtAgo(last.age_hours * 60)}`),
-          el("p", {}, `${info.name} means: ${info.advice.toLowerCase()}.`),
-        ]
-      : el("p", {}, "There is no recent measurement for this city."),
-    nearby.length
-      ? [
-          el("p", {}, `Other cities in the ${f.region}:`),
-          el("div", { class: "alternatives" },
-            nearby.map((c) =>
-              el("button", { type: "button", onclick: () => selectCity(c.city, true) },
-                el("span", { class: "dot", style: `--band:${aqiInfo(c.aqi_category).color}` }),
-                `${c.city} ${Math.round(c.pm25_24h)}`))),
-        ]
+    el("p", {}, `${cap(f.reason)}. Forecasts are made only from recent measurements, so this city is skipped until new data arrives (usually within an hour).`),
+    last && hasValue(last)
+      ? el("p", {}, "Last known reading: ",
+          el("span", { class: "last-known", style: bandStyle(info) }, `${Math.round(last.pm25_24h)} µg/m³, ${info.name}, measured ${fmtAgo(last.age_hours * 60)}`))
       : null,
-  );
+    nearby.length
+      ? [el("p", {}, `Other cities in the ${f.region}:`),
+          el("div", { class: "alternatives" }, nearby.map((c) =>
+            el("button", { type: "button", class: "ghost", onclick: () => selectCity(c.city, true) },
+              el("span", { class: "dot", style: `background:${aqiInfo(c.aqi_category).color}` }), `${c.city} ${Math.round(c.pm25_24h)}`)))]
+      : null);
 }
 
 function renderForecast(f) {
+  state.f = f;
   const box = document.getElementById("detail");
   box.hidden = false;
+  box.classList.toggle("is-empty", !f.available);
   if (!f.available) {
+    box.style.cssText = "";
+    if (state.chart) { state.chart.destroy(); state.chart = null; }
     box.replaceChildren(renderUnavailable(f));
     return;
   }
-  const canvas = el("canvas", { role: "img", "aria-label": `Line chart of the forecast for ${f.city}` });
+  box.style.cssText = bandStyle(aqiInfo(f.current.aqi_category));
+  const canvas = el("canvas", { role: "img", "aria-label": `Line chart of the 24-hour forecast for ${f.city}` });
   box.replaceChildren(
     el("div", { class: "detail-head" }, readingBlock(f), summaryBlock(f)),
-    stripBlock(f),
-    el("div", { class: "chart-box" }, canvas),
-    el(
-      "div",
-      { class: "columns" },
-      el("section", {}, el("h4", {}, `What to do: advice for ${GROUP_TEXT[f.guidance ? f.guidance.group : state.group]}`), adviceBlock(f)),
-      el("section", {}, el("h4", {}, "Why this forecast"), factorsBlock(f)),
-    ),
+    el("div", { class: "hours" },
+      el("div", { class: "section-top" },
+        el("h3", { class: "section-h" }, "Next 24 hours, hour by hour"),
+        el("p", { class: "section-note" }, "Hover or tap an hour to see its value")),
+      stripBlock(f),
+      el("div", { class: "chart-box" }, canvas)),
+    makeTabs("Advice and explanation", [
+      { id: "advice", label: "What to do", panel: adviceTab(f) },
+      { id: "why", label: "Why this forecast", panel: whyTab(f) },
+    ], state.tab, (id) => { state.tab = id; }),
     notesBlock(f),
   );
   drawChart(canvas, f);
   document.getElementById("model-line").textContent =
-    `Model ${f.model.name} version ${f.model.version}. Generated ${fmtTimeIST(f.generated_at_utc)} IST` +
+    `Model ${f.model.name}, version ${f.model.version}. Forecast made ${fmtWhen(f.generated_at_utc)}` +
     (f.model_latency_ms != null ? ` in ${Math.round(f.model_latency_ms)} ms.` : ".");
 }
 
-async function loadForecast() {
+async function loadForecast({ quiet = false } = {}) {
   if (!state.city) return;
   const box = document.getElementById("detail");
   box.setAttribute("aria-busy", "true");
-  box.hidden = false;
-  if (state.chart) { state.chart.destroy(); state.chart = null; }
-  box.replaceChildren(
-    el("div", { class: "loading" },
-      el("span", { class: "spinner", "aria-hidden": "true" }),
-      `Loading the forecast for ${state.city}…`),
-  );
+  if (quiet) {
+    const a = document.getElementById("advice");
+    if (a) a.classList.add("updating");
+  } else {
+    box.hidden = false;
+    if (state.chart) { state.chart.destroy(); state.chart = null; }
+    box.replaceChildren(el("div", { class: "loading" },
+      el("span", { class: "spinner", "aria-hidden": "true" }), `Loading the forecast for ${state.city}…`));
+  }
   try {
-    const f = await getJSON(`/forecast/${encodeURIComponent(state.city)}?group=${state.group}`);
-    renderForecast(f);
+    renderForecast(await getJSON(`/forecast/${encodeURIComponent(state.city)}?group=${state.group}`));
     showBanner("");
   } catch (e) {
-    box.hidden = false;
-    box.replaceChildren(
-      el("div", { class: "unavailable" },
-        el("h3", {}, `Could not load the forecast for ${state.city}`),
-        el("p", {}, `${reason(e)}. Use Refresh to try again in a moment.`)),
-    );
+    state.f = null;
+    if (state.chart) { state.chart.destroy(); state.chart = null; }
+    box.style.cssText = "";
+    box.replaceChildren(el("div", { class: "unavailable" },
+      el("h3", {}, `Could not load the forecast for ${state.city}`),
+      el("p", {}, `${reason(e)}. Use Refresh to try again in a moment.`)));
   } finally {
     box.removeAttribute("aria-busy");
   }
@@ -397,7 +644,12 @@ async function selectCity(city, scroll = false) {
   renderCities();
   document.getElementById("city-select").value = city;
   await loadForecast();
-  if (scroll) document.getElementById("detail").scrollIntoView({ block: "start" });
+  if (scroll) document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function setGroup(group) {
+  state.group = group;
+  loadForecast({ quiet: true });
 }
 
 async function refreshAll() {
@@ -409,7 +661,7 @@ async function refreshAll() {
     document.getElementById("asof").textContent = "No data right now";  // not "Loading…"
     return;
   }
-  await loadForecast();
+  await loadForecast({ quiet: Boolean(state.f && state.f.city === state.city) });
 }
 
 function fillAqiTable() {
@@ -420,31 +672,19 @@ function fillAqiTable() {
       low = a.max;
       return el("tr", {},
         el("td", {}, el("span", { class: "swatch", style: `background:${a.color}` }), a.name),
-        el("td", {}, `${range} µg/m³`),
+        el("td", { class: "nowrap" }, `${range} µg/m³`),
         el("td", {}, a.advice));
     }),
   );
 }
 
-function setGroupControls(group) {
-  state.group = group;
-  document.getElementById("group-select").value = group; // keep phone and desktop controls in step
-  document.querySelectorAll('input[name="group"]').forEach((r) => (r.checked = r.value === group));
-}
-
-function setGroup(group) {
-  setGroupControls(group);
-  loadForecast();
-}
-
-document.querySelectorAll('input[name="group"]').forEach((r) =>
-  r.addEventListener("change", (e) => setGroup(e.target.value)),
-);
-document.getElementById("group-select").addEventListener("change", (e) => setGroup(e.target.value));
 document.getElementById("city-select").addEventListener("change", (e) => selectCity(e.target.value));
 document.getElementById("refresh").addEventListener("click", refreshAll);
-// Browsers may restore form controls after a reload; start from a known state.
-setGroupControls("general");
+document.addEventListener("themechange", () => {  // charts read their colours when drawn
+  if (state.cities.length) renderOverview();
+  if (state.f && state.f.available) renderForecast(state.f);
+});
+setupShell();
 fillAqiTable();
 refreshAll();
 setInterval(refreshAll, REFRESH_MS);

@@ -133,9 +133,14 @@ def test_collection_health_finds_gaps():
     h = collection_health(times, now=t0 + timedelta(minutes=200))
     assert h["snapshots_24h"] == 5 and h["expected_24h"] == 48
     assert h["minutes_since_last"] == 20
-    assert [g["minutes"] for g in h["gaps_24h"]] == [90]
+    # the window starts 24 h before now (1240 min before the first snapshot)
+    assert [g["minutes"] for g in h["gaps_24h"]] == [1240, 90]
+    assert not any(g["ongoing"] for g in h["gaps_24h"])
     assert len(h["times_24h"]) == 5 and h["times_24h"][0] == t0.isoformat()
-    assert collection_health([], now=t0)["last_snapshot_utc"] is None
+    empty = collection_health([], now=t0)
+    assert empty["last_snapshot_utc"] is None
+    # collector stopped: one ongoing 24-hour gap, never "no gaps"
+    assert [(g["minutes"], g["ongoing"]) for g in empty["gaps_24h"]] == [(1440, True)]
 
 
 def test_recent_problems_newest_first(project):
@@ -188,6 +193,7 @@ def test_airflow_workflows_from_runs_file(project):
     runs = {
         "airsense_retrain": {
             "state": "success",
+            "start_date": "2026-10-31T04:52:30+00:00",
             "end_date": "2026-10-31T05:00:00+00:00",
         },
         "airsense_live": {
@@ -200,6 +206,7 @@ def test_airflow_workflows_from_runs_file(project):
     assert [w["dag_id"] for w in out] == ["airsense_live", "airsense_retrain"]
     assert out[0]["state"] == "failed" and out[0]["minutes_ago"] == 20
     assert out[0]["url"] == "http://localhost:8081/dags/airsense_live"
+    assert out[1]["duration_min"] == 7.5 and out[0]["duration_min"] is None
     assert workflows(None, now, None) == []  # Airflow not set up: nothing shown
     assert workflows({"x": {"state": "running"}}, now, None)[0]["minutes_ago"] is None
 

@@ -38,10 +38,14 @@ The colours on the website are the official CPCB colours, and the category name 
 
 Open the AirSense address in any modern browser (Chrome, Firefox, Edge, Safari), on a computer or a phone. On the computer where AirSense runs, the address is **http://localhost:8080**.
 
-There are two pages, linked at the top right:
+There are two pages, linked at the top right (on a phone, behind the menu button ☰):
 
 - **Forecast**: for everyone (sections 3–6);
 - **Pipeline console**: for the people who run the system (section 8).
+
+The moon / sun button next to them switches between a light and a dark theme. The first time, AirSense follows your computer's or phone's setting; after that, your browser remembers your choice.
+
+All times are Indian Standard Time, written the same way everywhere: *Mon 2 Nov, 11:00 IST*, often followed by how long ago it was, for example *(2 h ago)*.
 
 ---
 
@@ -49,57 +53,52 @@ There are two pages, linked at the top right:
 
 ![Forecast page on a computer](images/manual_forecast_desktop.png)
 
-### 3.1 Choose who the advice is for
+### 3.1 Choose a city
 
-Under the title, **Advice for** offers three choices:
+The 14 city tiles show each city's current 24-hour average PM2.5 (in µg/m³) and its category, **most polluted first**. The coloured band on the left of a tile is the AQI colour. A tile with **"No recent data"** has no measurement from the last few hours. Hover over a tile to see the state and when it was measured.
 
-- **General public**
-- **Children, elderly, heart or lung conditions**: stricter advice for sensitive people;
-- **Outdoor workers and exercise**: advice for people who spend long periods outside.
+Click a tile to see that city's details below. The selected tile has a dark outline and a light tint of its colour.
 
-The choice changes only the advice text; the forecast is the same for everyone.
+### 3.2 Read the details
 
-### 3.2 Choose a city
-
-The 14 city tiles show each city's current 24-hour average and its category. The coloured band on the left of a tile is the AQI colour. A tile with **"No recent data"** has no measurement from the last few hours.
-
-Click a tile to see that city's details below. The selected tile has a dark outline.
-
-### 3.3 Read the details
-
-1. **The coloured box** ("Delhi now"): the current 24-hour average, its category, the hour it describes, the number of measuring stations, and how long ago it was measured (normally about 2–3 hours, because official data is published with a delay).
-2. **The outlook** next to it, for example *"Expected to stay Very Poor for the next 24 hours"*, with the highest expected value and when it happens.
-3. **Next 24 hours, hour by hour**: one coloured cell per hour. The hour with the highest value has a dark outline. Hover over a cell to see its value.
-4. **The line chart**: the same forecast as numbers; the background colour shows the AQI band. Hover over a point to see its value and category.
-5. **What to do**: advice for the group chosen in 3.1, with its sources (CPCB and the World Health Organization).
-6. **Why this forecast**: the four inputs that changed the forecast most. A red bar to the right means the input **raises** the forecast; a green bar to the left means it **lowers** it. The number is the effect in µg/m³.
-7. **Notes on this forecast** (yellow box, only when needed): some input data was missing, for example a past hour that was not measured. The forecast is still made but may be less accurate.
+1. **The coloured box**: the city's current 24-hour average, its category, a scale showing where the value sits among the six AQI categories, and the hour it describes.
+2. **The outlook** next to it, for example *"Expected to stay Very Poor for the next 24 hours"*, with three figures: the **highest** and **lowest** expected values and when they happen, and the **change over the 24 hours** (in µg/m³ and %). Below them: where the 24-hour average is heading by the last forecast hour, the **health effect** of the worst category expected (*"At Very Poor: …"* when the category stays the same, *"If it reaches Severe: …"* when it gets worse), and how many stations the value comes from and how long ago it was measured (normally about 2–3 hours, because official data is published with a delay).
+3. **Next 24 hours, hour by hour**: one coloured box per hour. A small tick under each box, and every 3 hours a longer tick with the time written centred under its box, so each time clearly belongs to one box; the day is written above where a new day starts, with a line marking the start of the day.
+4. **The line chart**: the same forecast as numbers, with a point for every hour in its AQI colour. The first point is the latest measured value; the **highest** hour has an orange ring and the label *Peak*, the **lowest** a blue ring and the label *Low*; a dashed vertical line marks midnight; the background colour shows the AQI band. **Hover over a cell or a point** (on a phone, tap): the cell and the chart point light up together and a box shows the date and time, the value and category, and the change from the hour before.
+5. Two tabs below the chart:
+   - **What to do** (shown first): choose who the advice is for (**General public**; **Children, elderly, heart or lung conditions**: stricter advice for sensitive people; **Outdoor workers and exercise**: for people who spend long periods outside). The choice changes only the advice text; the forecast is the same for everyone. The sources (CPCB and the World Health Organization) are listed under the advice.
+   - **Why this forecast**: the six inputs that changed the forecast most, and **all other factors combined** in the last row. An orange bar to the right means the input **raises** the forecast; a blue bar to the left means it **lowers** it. The number is the effect in µg/m³, averaged over the next 24 hours. An input whose reading is missing is not listed (its effect is part of "all other factors").
+6. **Notes on this forecast** (yellow box, only when needed): some input data was missing, for example a past reading that was not measured. The forecast is still made but may be less accurate.
 
 **Why is the line so flat?** Each new hour replaces only one of the 24 hours in the average, so a 24-hour average can only change slowly. A flat line does not mean the forecast is not working.
 
-### 3.4 Across India right now
+### 3.3 Across India right now
 
-Below the details: the most polluted and the cleanest city, and a bar showing how many cities are in each category.
+Below the details: the **most polluted** and **cleanest** city, any city with no recent data, and two charts:
+
+- **Cities, most polluted first**: one bar per city in its AQI colour, with the category names along the top. Click a bar to open that city.
+- **Cities per category**: how many cities are in each category, with *No data* first (set apart by a dashed line), then Good to Severe; categories with no city show 0. Hover over a bar to see its cities; click it to highlight those cities in the first chart, and click again to clear.
+
+### 3.4 How to read this page
+
+At the bottom, **How to read this page** opens a short explanation (left) and the table of AQI categories with their colours and health impacts (right).
 
 ### 3.5 Refreshing
 
-The page updates itself every 10 minutes. **Latest measurement … ago** (top right) shows how recent the data is; **Refresh** updates it immediately.
+The page updates itself every 10 minutes. **Refresh** (top right) updates it immediately; the line under it, **Latest measurement …**, shows how recent the data is.
 
 ---
 
 ## 4. The Forecast page on a phone
 
 <p>
-<img src="images/manual_phone_top.png" alt="Forecast page on a phone: city and advice dropdowns" width="300">
+<img src="images/manual_phone_top.png" alt="Forecast page on a phone: menu, theme button and city dropdown" width="300">
 <img src="images/manual_phone_forecast.png" alt="Forecast details on a phone" width="300">
 </p>
 
-On a phone the city tiles are replaced by two menus:
+On a phone the city tiles are replaced by a **City** menu at the top, listing the cities from most to least polluted with their value and category (values are for the city itself, the average of its own stations, not for the whole state). The pages are behind the menu button ☰ at the top right.
 
-- **City**: choose a city; the state is shown in brackets, for example *Lucknow (Uttar Pradesh)*. Values are for the city itself (the average of its own stations), not for the whole state.
-- **Advice for**: the same three choices as on a computer.
-
-The details appear directly below, in the same order as on a computer. **Across India right now** at the bottom also lists all 14 cities from most to least polluted; tap a city to open it.
+The details appear directly below, in the same order as on a computer; the advice choices are in the **What to do** tab. In **Across India right now** at the bottom, tap a city's bar to open it; the category chart is below it.
 
 ---
 
@@ -109,7 +108,7 @@ The details appear directly below, in the same order as on a computer. **Across 
 
 AirSense only forecasts from **recent** measurements (at most 4 hours old). If a city's latest measurement is older, or missing, the page says **"No forecast for … right now"** and gives:
 
-- the reason (for example, *latest PM2.5 value is 23.9 h old*);
+- the reason (for example, *Latest PM2.5 value is 23.9 h old*);
 - the last known reading and what its category means;
 - buttons for other cities in the same region.
 
@@ -120,10 +119,10 @@ This usually resolves itself when new data arrives (normally within an hour). A 
 | Message | Meaning | What to do |
 |---|---|---|
 | *Loading the forecast for …* | The forecast is being calculated (usually under a second; the first request after a restart can take a few seconds). | Wait. |
-| *Notes: live weather forecast unavailable; using the forecast fetched …* | The weather service could not be reached, so a weather forecast saved a few hours earlier is used. | Nothing; the forecast is still valid but may be slightly less accurate. |
+| *Notes: The live weather forecast is unavailable, so this forecast uses the weather forecast fetched …* | The weather service could not be reached, so a weather forecast saved a few hours earlier is used. | Nothing; the forecast is still valid but may be slightly less accurate. |
 | *Could not load the forecast … Model server unavailable* | The forecasting model is not running. | Try again later; operators see this on the Pipeline console. |
 | *Could not load the forecast … Live data store unavailable* (or red bar *Could not load the city list: Live data store unavailable*) | The store holding the latest measurements is not running. | Use Refresh in a moment; if it persists, contact the operator. |
-| *Notes: health advice service unavailable right now* | The forecast is shown, but the advice texts cannot be looked up. | Nothing; the forecast is still valid. Advice returns when the service is back. |
+| *Notes: Health advice is unavailable right now.* | The forecast is shown, but the advice texts cannot be looked up. | Nothing; the forecast is still valid. Advice returns when the service is back. |
 | Red bar at the top: *Could not load the city list: The AirSense service (backend) is not running or not answering* (or *cannot be reached*) | The website cannot reach the AirSense service. | Check your connection and use Refresh; if it persists, contact the operator. |
 
 ---
@@ -133,7 +132,7 @@ This usually resolves itself when new data arrives (normally within an hour). A 
 - **Forecasts are estimates.** On test data the average error was about 7 µg/m³ for the 24-hour average, with the right AQI category in about 83% of cases. Always follow official health advisories.
 - **Measurements** come from the Central Pollution Control Board (CPCB) stations, through the government's open data portal (data.gov.in). **Weather** comes from Open-Meteo.com.
 - **Cities covered:** Delhi, Lucknow, Patna, Kanpur, Jaipur, Chandigarh (North); Mumbai, Ahmedabad, Pune (West); Bengaluru, Chennai, Hyderabad (South); Kolkata, Guwahati (East).
-- **Privacy:** AirSense does not ask for, store or send any personal information. The settings you choose are not saved.
+- **Privacy:** AirSense does not ask for, store or send any personal information. Only your light or dark theme choice is remembered, in your own browser.
 
 ---
 
@@ -155,16 +154,13 @@ This usually resolves itself when new data arrives (normally within an hour). A 
 
 The **Pipeline console** shows whether the system behind the forecasts is healthy. It reads only; it cannot start or change anything. It updates every minute. The scheduler (Airflow, at http://localhost:8081) runs the pipeline; the console shows what it did.
 
-| Section | What it answers | What to do when it is not green |
+At the top, four **summary cards**, each with a status word (**OK**, **Needs attention**, **Problem**) as well as a colour. Clicking a card opens its tab below. A small number on a tab (for example on **Live data**) counts the things to look at there.
+
+| Tab (and card) | What it answers | What to do when it is not OK |
 |---|---|---|
-| **Pipeline steps** (summary) | Are all steps up to date? | "*n* need a re-run": normally fixed by the next scheduled run; to run now, Trigger the workflow in Airflow. |
-| **Scheduled workflows (Airflow)** | Did the three automatic workflows run, and did they succeed? *airsense_live* (every 30 min: collect, process, refresh live data), *airsense_retrain* (Sundays: retrain and serve a better model), *airsense_housekeeping* (daily: back up data, clean up). | **Failed**: open it in Airflow ("Open in Airflow"), click the red box, read *Logs*. Amber "no run for a while": Airflow is not running (start it with `bash airflow/start.sh`) or the computer was asleep. |
-| **Live data collection** (summary and timeline) | Are new measurements arriving every 30 minutes? Pink cells are missed half-hours. | Check that the computer was on and connected and that Airflow is running; check the collector log. |
-| **Live model** | Which model version serves forecasts, and how accurate it was on test data. | — |
-| **Quality gate** | Did the live model pass all 5 automatic checks before it was allowed to serve? | A failed check means a new model was not promoted; see the gate report. |
-| **Pipeline graph** | All 14 steps and which step feeds which. Green = up to date, amber = inputs changed (needs a re-run), grey = runs on every pipeline run. Select a step to see its latest report and the reason it changed. | — |
-| **Processing speed** | Rows per second of each data step (latest run). | A large drop compared with earlier runs points to a problem. |
-| **All steps** | The same steps as a table, with last run times. | — |
-| **Recent warnings and errors** | The latest problems written by the collector (for example temporary timeouts of the government data portal). | Occasional warnings are normal (retries succeed); repeated errors need attention. |
+| **Workflows** (Scheduled workflows) | Did the three automatic workflows run, and did they succeed? *airsense_live* (every 30 min: collect, process, refresh live data), *airsense_retrain* (Sundays: retrain and serve a better model), *airsense_housekeeping* (daily: back up data, clean up). Each row shows the latest run, the **next run**, how long the run **took**, and the result. Below: **Recent warnings and errors** written by the collector. | **Failed**: open it in Airflow ("Open in Airflow"), click the red box, read *Logs*. **Overdue** ("No run for a while"): Airflow is not running (start it with `bash airflow/start.sh` and keep that terminal open) or the computer was asleep. Occasional collector warnings are normal (retries succeed); repeated errors need attention. |
+| **Pipeline** (Pipeline steps) | All 14 steps and which step feeds which. Green = up to date, amber = inputs changed (needs a re-run), grey = runs on every pipeline run. Select a step (in the graph or the **All steps** table) to see its command, latest report and the reason it changed. **Processing speed**: rows per second of each data step in its latest run. On a phone the graph is hidden and the table is the list of steps. | "*n* need a re-run": normally fixed by the next scheduled run; to run now, Trigger the workflow in Airflow. A large drop in processing speed compared with earlier runs points to a problem. |
+| **Live data** (Live data collection) | Are new measurements arriving every 30 minutes? Four figures (collected in the last 24 hours, number of gaps, last snapshot, all snapshots), then one box per half-hour: green = collected, pink = missing, outlined = not due yet. Hover over a box for its time. Gaps are listed with their times; a gap that is still going on says *still missing*. | Check that the computer was on and connected and that Airflow is running; check the collector log. |
+| **Model** (Live model) | Which model version serves forecasts, how accurate it was on test data (compared with "no change", i.e. assuming the 24-hour average stays as it is), and the **quality gate**: the 5 automatic checks it passed before it was allowed to serve, in plain words, with a bar showing value against limit where it applies. | A failed check means a new model was not promoted; see the gate report. |
 
 Technical details of the service (API, error handling, configuration) are in `docs/lld.md`.

@@ -84,6 +84,7 @@ class FakeService:
                     "direction": "raises",
                 }
             ],
+            "explanation_other_ug_m3": -1.2,
             "guidance": None,
             "warnings": [],
             "model_latency_ms": 12.0,
@@ -118,6 +119,7 @@ def test_forecast_returns_24_hours_and_schema():
     body = r.json()
     assert body["available"] is True and len(body["forecast"]) == 24
     assert body["explanation"][0]["direction"] == "raises"
+    assert body["explanation_other_ug_m3"] == -1.2  # not dropped by the response model
 
 
 def test_unknown_city_is_404():

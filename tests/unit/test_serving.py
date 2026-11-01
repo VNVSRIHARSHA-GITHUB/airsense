@@ -5,7 +5,7 @@ import pandas as pd
 
 from airsense.features.build_training import expand_horizon
 from airsense.serving.assemble import aqi_name, build_rows
-from airsense.serving.explain import label, top_factors
+from airsense.serving.explain import explain, label, missing_note, top_factors
 from airsense.training.train import encode_categories, feature_columns
 
 CAL = {
@@ -96,17 +96,20 @@ def test_aqi_names():
 
 
 def test_labels_and_top_factors():
-    assert label("wind_speed_10m_target") == "wind speed expected"
-    assert label("pm25_lag_24h") == "PM2.5 24h ago"
+    assert label("wind_speed_10m_target") == "expected wind speed"
+    assert label("wind_speed_10m_now") == "wind speed now"
+    assert label("pm25_lag_24h") == "PM2.5 24 hours ago"
+    assert label("pm25_change_1h") == "change over the last 1 hour"
+    assert label("rain_24h_target") == "expected rain (24-hour total)"
     features = ["pm25_24h", "wind_dir_sin_target", "wind_dir_cos_target", "hour"]
     contrib = np.array([[10.0, -3.0, -4.0, 1.0, 50.0], [20.0, -3.0, -4.0, -1.0, 50.0]])
     top = top_factors(contrib, features, n=2)
     assert [f["factor"] for f in top] == [
         "current PM2.5 level",
-        "wind direction expected",
+        "expected wind direction",
     ]
     assert top[1] == {
-        "factor": "wind direction expected",
+        "factor": "expected wind direction",
         "effect_ug_m3": -7.0,
         "direction": "lowers",
     }
@@ -126,3 +129,58 @@ def test_missing_pm_feature_becomes_nan():
         feature_order=["pm25_24h", "pm25_lag_72h"],
     )
     assert rows["pm25_lag_72h"].isna().all() and (rows["pm25_24h"] == 100).all()
+
+
+def test_explain_hides_missing_inputs_and_adds_the_rest():
+    features = ["pm25_24h", "pm25_lag_6h", "hour", "city"]
+    contrib = np.array([[5.0, -9.0, 1.0, 2.0, 50.0]])
+    out = explain(contrib, features, n=2, missing={"pm25_lag_6h"})
+    assert [f["factor"] for f in out["factors"]] == [
+        "current PM2.5 level",
+        "this city's usual level",
+    ]
+    assert out["other_ug_m3"] == -8.0  # missing lag (-9) + time of day (+1)
+    assert missing_note(["pm25_lag_6h", "pm25_lag_24h"]) == (
+        "Some past readings are missing (PM2.5 6 hours ago and PM2.5 24 hours ago), "
+        "so this forecast may be less accurate."
+    )
+
+
+def test_at_least_six_factors_with_real_feature_list():
+    """With the real model inputs, 6 factors remain even if every PM2.5 history
+    input except the current level is missing."""
+    weather = [
+        "temperature_2m",
+        "relative_humidity_2m",
+        "precipitation",
+        "wind_speed_10m",
+        "surface_pressure",
+        "cloud_cover",
+        "wind_dir_sin",
+        "wind_dir_cos",
+        "rain_24h",
+    ]
+    features = (  # the inputs as built by build_training
+        ["pm25_24h", "n_stations_24h", "pm25_mean_72h", "pm25_max_72h"]
+        + [f"pm25_lag_{h}h" for h in (1, 3, 6, 12, 24, 48, 72)]
+        + [f"pm25_change_{h}h" for h in (1, 6, 24)]
+        + [f"{w}_now" for w in weather]
+        + [f"{w}_target" for w in weather]
+        + [
+            "horizon",
+            "hour",
+            "day_of_week",
+            "month",
+            "is_weekend",
+            "is_festival",
+            "city",
+            "region",
+        ]
+    )
+    history = {
+        f
+        for f in features
+        if f.startswith(("pm25_lag_", "pm25_change_", "pm25_mean", "pm25_max"))
+    }
+    contrib = np.ones((24, len(features) + 1))
+    assert len(explain(contrib, features, n=6, missing=history)["factors"]) == 6
