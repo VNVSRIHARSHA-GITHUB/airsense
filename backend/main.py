@@ -12,6 +12,7 @@ Endpoints (the API contract, documented in the LLD):
     GET /guidance            advice for an AQI category and a user group
     GET /pipeline            pipeline status for the operators' console (read-only)
     GET /metrics             Prometheus metrics (Stage 10; not forwarded by nginx)
+    POST /alerts             Alertmanager's webhook (Stage 10; not forwarded by nginx)
 Interactive documentation: http://127.0.0.1:8000/docs
 """
 
@@ -25,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from airsense.common.settings import PROJECT_ROOT
+from airsense.monitoring.alerts import ALERTS_FILE, AlertStore
 from airsense.serving.metrics import Metrics
 from airsense.serving.service import (
     FeatureStoreBusy,
@@ -106,6 +108,7 @@ def create_app(service=None, pipeline=None, root=PROJECT_ROOT) -> FastAPI:
     """Build the app; tests pass fakes, normal runs create the real services."""
     state = {"service": service, "pipeline": pipeline}
     metrics = Metrics(lambda: state["service"], root)
+    alert_store = AlertStore(root / ALERTS_FILE)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -206,6 +209,15 @@ def create_app(service=None, pipeline=None, root=PROJECT_ROOT) -> FastAPI:
     @app.get("/pipeline")
     def pipeline() -> dict:
         return state["pipeline"].get()
+
+    @app.post("/alerts", include_in_schema=False)
+    def alerts(payload: dict) -> dict:
+        """Alertmanager's webhook: keep each alert's latest status for the console."""
+        n = alert_store.receive(payload)
+        log.info(
+            "Received %d alert(s) from Alertmanager (%s)", n, payload.get("status")
+        )
+        return {"stored": n}
 
     @app.get("/metrics", include_in_schema=False)
     def prometheus_metrics() -> Response:

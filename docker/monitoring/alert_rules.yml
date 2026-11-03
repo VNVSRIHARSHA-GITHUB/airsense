@@ -1,0 +1,95 @@
+# AirSense alert rules (Stage 10). Each rule must hold for its "for" time before it
+# fires, so short blips (a restart, one slow request) do not raise alerts.
+# Tested with promtool: tests/monitoring/alert_rules_test.yml.
+groups:
+  - name: airsense-service
+    rules:
+      - alert: BackendDown
+        expr: up{job="backend"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The AirSense backend is not answering"
+          description: "Prometheus could not read the backend's /metrics for 2 minutes: the web pages cannot show forecasts. Check `docker compose ps` and `docker compose logs backend`."
+
+      - alert: ModelServerDown
+        expr: airsense_dependency_up{dependency="model_server"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The model server is down"
+          description: "The backend cannot reach the MLflow model server, so no forecasts can be made. Check `docker compose logs model-server`."
+
+      - alert: LiveDataStoreDown
+        expr: airsense_dependency_up{dependency="feature_store"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "The live data store (Redis) cannot be read"
+          description: "The backend cannot read the live features from Redis; forecasts and the city list fail. Check `docker compose ps redis`."
+
+      - alert: ServedModelNotChampion
+        expr: airsense_dependency_up{dependency="champion_up_to_date"} == 0
+        for: 30m
+        labels: {severity: warning}
+        annotations:
+          summary: "The served model is not the registry's champion"
+          description: "A new champion was registered but serving was not restarted. Restart with `docker compose restart model-server backend` (the retrain workflow normally does this)."
+
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(airsense_http_requests_total{status=~"5.."}[5m]))
+            / sum(rate(airsense_http_requests_total[5m])) > 0.05
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than 5% of API requests fail"
+          description: "{{ $value | humanizePercentage }} of requests answered with a server error over the last 5 minutes."
+
+      - alert: SlowForecasts
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(airsense_http_request_duration_seconds_bucket{endpoint="/forecast/{city}"}[10m]))) > 2
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Forecasts are slow"
+          description: "95% of forecast requests took up to {{ $value | humanize }} s over the last 10 minutes (limit 2 s)."
+
+  - name: airsense-data
+    rules:
+      # Official data is published 2-3 h late, so 4 h (the limit after which the
+      # service stops forecasting a city) is the first age that is a real problem.
+      - alert: LiveDataStale
+        expr: min(airsense_data_age_hours) > 4
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "No city has data newer than 4 hours"
+          description: "The newest measurement is {{ $value | humanize }} h old, so no forecasts can be made. Check that Airflow is running and the live workflow succeeds."
+
+      - alert: CollectorNotRunning
+        expr: time() - airsense_collector_last_run_timestamp_seconds > 75 * 60
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The collector has not run for over 75 minutes"
+          description: "No live-data run since {{ $value | humanizeDuration }}. Airflow is probably stopped (start it with `bash airflow/start.sh`) or the laptop was asleep."
+
+      - alert: CPCBFeedEmpty
+        expr: |
+          airsense_collector_last_result{result="empty"} == 1
+            and on() (time() - airsense_collector_last_ok_timestamp_seconds) > 3600
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "The CPCB feed has returned no data for over an hour"
+          description: "data.gov.in answers normally but with 0 records: a gap at the source, not in AirSense. Nothing to fix; collection resumes when CPCB publishes again."
+
+      - alert: CollectorErrors
+        expr: airsense_collector_last_result{result="error"} == 1
+        for: 35m
+        labels: {severity: warning}
+        annotations:
+          summary: "The collector fails (network or API error)"
+          description: "The last collector runs ended with an error for over 35 minutes. See `logs/collector.log` and the airsense_live run in Airflow."

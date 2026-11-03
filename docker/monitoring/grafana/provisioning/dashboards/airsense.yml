@@ -1,0 +1,10 @@
+# The AirSense dashboards are files in the repository (docker/monitoring/grafana/dashboards),
+# loaded at start-up; changes made in the Grafana UI are not saved back.
+apiVersion: 1
+providers:
+  - name: airsense
+    folder: AirSense
+    type: file
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

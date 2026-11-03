@@ -1,12 +1,16 @@
-# AirSense serving system (Stage 8): five containers on one private network.
+# AirSense serving system (Stage 8) and its monitoring (Stage 10): eight
+# containers on one private network.
 #
 #   browser -> frontend (nginx, :8080) -> /api -> backend (FastAPI, :8000)
 #   backend -> model-server (MLflow, :5002)   24-hour forecast
 #           -> redis (:6379)                  Feast online features
 #           -> qdrant (:6333)                 health-guidance search
+#   prometheus (:9090) reads backend /metrics every 30 s, evaluates the alert rules
+#   alertmanager (:9093) sends alerts to backend POST /alerts (-> logs/alerts/)
+#   grafana (:3000) dashboards over Prometheus
 #
 # Only the frontend is reachable from other machines (port 8080). The backend,
-# Redis and Qdrant are published on 127.0.0.1 only: the backend for /docs, Redis
+# Redis, Qdrant and the three monitoring tools are published on 127.0.0.1 only: the backend for /docs, Redis
 # and Qdrant so the DVC pipeline on the laptop (feast_online, guidance_index) can
 # fill them. The model server has no published port at all.
 #
@@ -84,6 +88,8 @@ services:
       # the console) and the saved Open-Meteo forecasts (fallback weather)
       - ${PWD}/.dvc/tmp:${PWD}/.dvc/tmp
       - ${PWD}/data/raw/live/openmeteo:${PWD}/data/raw/live/openmeteo
+      # alerts from Alertmanager (Stage 10); create it first: mkdir -p logs/alerts
+      - ${PWD}/logs/alerts:${PWD}/logs/alerts
       # embedding model already downloaded on the laptop; HF_HUB_OFFLINE=1 in the image
       - ${HOME}/.cache/huggingface:/home/airsense/.cache/huggingface
     ports: ["127.0.0.1:8000:8000"]
@@ -116,6 +122,77 @@ services:
       timeout: 3s
       retries: 3
 
+  # ---------- monitoring (Stage 10) ----------
+  # Not dependent on the backend: they must keep running (and alert) when it is down.
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/healthy"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports: ["127.0.0.1:9093:9093"]
+    volumes:
+      - ./docker/monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/-/healthy"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:12.0.0
+    restart: unless-stopped
+    environment:
+      # admin password from .env (never in Git); viewers need no login (local only)
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # the Pipeline console shows a few panels inside its Monitoring tab (iframes)
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/service.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    ports: ["127.0.0.1:3000:3000"]
+    volumes:
+      - ./docker/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    mem_limit: 256m
+    depends_on:
+      prometheus: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
 volumes:
   redis-data:
   qdrant-data:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

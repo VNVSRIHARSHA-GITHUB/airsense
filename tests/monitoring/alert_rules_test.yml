@@ -1,0 +1,81 @@
+# Unit tests for docker/monitoring/alert_rules.yml (Stage 10), run with:
+#   docker run --rm -v "$PWD":/w -w /w --entrypoint promtool prom/prometheus:v3.5.0 \
+#     test rules tests/monitoring/alert_rules_test.yml
+# Each test feeds made-up metric series and checks which alerts fire, and when.
+rule_files:
+  - ../../docker/monitoring/alert_rules.yml
+
+evaluation_interval: 30s
+
+tests:
+  # The backend stops answering at minute 3: not yet after 1 minute, firing after 2.
+  - interval: 30s
+    input_series:
+      - series: 'up{job="backend", instance="backend:8000"}'
+        values: '1x5 0x10'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: BackendDown
+        exp_alerts: []
+      - eval_time: 5m30s
+        alertname: BackendDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: backend, instance: "backend:8000"}
+            exp_annotations:
+              summary: "The AirSense backend is not answering"
+              description: "Prometheus could not read the backend's /metrics for 2 minutes: the web pages cannot show forecasts. Check `docker compose ps` and `docker compose logs backend`."
+
+  # 10 % of requests fail for 10 minutes -> HighErrorRate; no traffic -> nothing.
+  - interval: 1m
+    input_series:
+      - series: 'airsense_http_requests_total{endpoint="/forecast/{city}", method="GET", status="200"}'
+        values: '0+9x15'
+      - series: 'airsense_http_requests_total{endpoint="/forecast/{city}", method="GET", status="503"}'
+        values: '0+1x15'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "More than 5% of API requests fail"
+              description: "10% of requests answered with a server error over the last 5 minutes."
+
+  # Normal 2-3 h old data does not alert; 5 h old for 15 minutes does.
+  - interval: 5m
+    input_series:
+      - series: 'airsense_data_age_hours{city="Delhi"}'
+        values: '2.5x4 5x6'
+      - series: 'airsense_data_age_hours{city="Pune"}'
+        values: '2.8x4 5.2x6'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: LiveDataStale
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: LiveDataStale
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "No city has data newer than 4 hours"
+              description: "The newest measurement is 5 h old, so no forecasts can be made. Check that Airflow is running and the live workflow succeeds."
+
+  # Feed empty: one empty run with a recent good one -> nothing; empty and the last
+  # good data over an hour old -> CPCBFeedEmpty. (Timestamps in seconds; t starts at 0.)
+  - interval: 5m
+    input_series:
+      - series: 'airsense_collector_last_result{result="empty"}'
+        values: '1x24'
+      - series: 'airsense_collector_last_ok_timestamp_seconds'
+        values: '0x24'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: CPCBFeedEmpty
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: CPCBFeedEmpty
+        exp_alerts:
+          - exp_labels: {severity: warning, result: empty}
+            exp_annotations:
+              summary: "The CPCB feed has returned no data for over an hour"
+              description: "data.gov.in answers normally but with 0 records: a gap at the source, not in AirSense. Nothing to fix; collection resumes when CPCB publishes again."

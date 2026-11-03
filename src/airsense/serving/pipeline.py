@@ -28,6 +28,7 @@ from pathlib import Path
 import yaml
 
 from airsense.common.settings import PROJECT_ROOT
+from airsense.monitoring.alerts import ALERTS_FILE, alerts_summary
 
 log = logging.getLogger(__name__)
 
@@ -388,4 +389,5 @@ class PipelineStatus:
             "workflows": workflows(
                 read_json(self.root / AIRFLOW_RUNS), now, self.airflow_url
             ),
+            "alerts": alerts_summary(self.root / ALERTS_FILE),  # from Alertmanager
         }

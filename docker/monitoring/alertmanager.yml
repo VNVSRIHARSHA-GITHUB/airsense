@@ -1,0 +1,21 @@
+# Alertmanager for AirSense (Stage 10). Every alert goes to the backend's /alerts
+# (inside the Docker network), which keeps them in logs/alerts/alerts.json for the
+# Pipeline console. No e-mail and no extra secrets.
+route:
+  receiver: airsense-backend
+  group_by: [alertname]
+  group_wait: 30s        # wait for related alerts before the first notice
+  group_interval: 5m     # changes to a group are sent at most every 5 min
+  repeat_interval: 6h    # a still-firing alert is sent again after 6 h
+
+receivers:
+  - name: airsense-backend
+    webhook_configs:
+      - url: http://backend:8000/alerts
+        send_resolved: true   # the console also learns when an alert has ended
+
+# When the model server or the live data store is down, the resulting API errors
+# are a consequence, not a second problem: show only the cause.
+inhibit_rules:
+  - source_matchers: ['alertname=~"ModelServerDown|LiveDataStoreDown"']
+    target_matchers: ['alertname=~"HighErrorRate|SlowForecasts"']
