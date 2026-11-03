@@ -80,3 +80,46 @@ def test_scrape_works_without_collector_status_or_snapshots(tmp_path):
     lines = metric_lines(TestClient(create_app(service=FakeService(), root=tmp_path)))
     assert value(lines, "airsense_snapshots_last_24h") == 0
     assert not any(line.startswith("airsense_collector_last_result") for line in lines)
+
+
+def test_monitoring_reports_become_metrics(tmp_path):
+    rep = tmp_path / "data" / "monitoring" / "reports"
+    rep.mkdir(parents=True)
+    (rep / "evaluation.json").write_text(
+        json.dumps(
+            {
+                "evaluated_at_utc": "2026-11-05T12:00:00+00:00",
+                "limit_mae": 10.2,
+                "error_high": True,
+                "overall": {
+                    "pairs": 300,
+                    "mae_model": 12.5,
+                    "mae_no_change": 11.0,
+                    "skill": -0.136,
+                },
+                "by_horizon": {
+                    "1-6 h": {"mae_model": 5.0},
+                    "13-24 h": {"mae_model": None},
+                },
+            }
+        )
+    )
+    (rep / "drift.json").write_text(
+        json.dumps(
+            {
+                "checked_at_utc": "2026-11-05T17:20:00+00:00",
+                "inputs": {
+                    "pm25_24h": {"psi": 0.45, "level": "drift"},
+                    "rain_24h": {"psi": None, "level": "not enough data"},
+                },
+            }
+        )
+    )
+    lines = metric_lines(TestClient(create_app(service=FakeService(), root=tmp_path)))
+    assert value(lines, 'airsense_forecast_mae{forecast="model"}') == 12.5
+    assert value(lines, 'airsense_forecast_mae{forecast="no_change"}') == 11.0
+    assert value(lines, "airsense_forecast_error_high") == 1
+    assert value(lines, 'airsense_forecast_mae_by_horizon{hours_ahead="1-6 h"}') == 5.0
+    assert value(lines, 'airsense_drift_psi{input="pm25_24h"}') == 0.45
+    assert value(lines, 'airsense_drift_level{input="pm25_24h"}') == 2
+    assert not any('input="rain_24h"' in line for line in lines)  # no PSI: no value

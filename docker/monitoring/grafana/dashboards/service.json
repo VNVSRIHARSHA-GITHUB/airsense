@@ -200,7 +200,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(rate(airsense_http_requests_total{status=~\"5..\"}[5m])) / sum(rate(airsense_http_requests_total[5m]))",
+          "expr": "(sum(rate(airsense_http_requests_total{status=~\"5..\"}[5m])) or vector(0)) / sum(rate(airsense_http_requests_total[5m]))",
           "legendFormat": "errors"
         }
       ]
@@ -251,7 +251,7 @@
       "id": 5,
       "type": "timeseries",
       "title": "Requests per minute by endpoint",
-      "description": "",
+      "description": "Visitor and console traffic; Docker's health checks and Alertmanager's calls are left out.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -275,7 +275,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (endpoint) (rate(airsense_http_requests_total[5m])) * 60",
+          "expr": "sum by (endpoint) (rate(airsense_http_requests_total{endpoint!~\"/health|/alerts\"}[5m])) * 60",
           "legendFormat": "{{endpoint}}"
         }
       ]

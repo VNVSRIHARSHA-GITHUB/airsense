@@ -79,3 +79,31 @@ tests:
             exp_annotations:
               summary: "The CPCB feed has returned no data for over an hour"
               description: "data.gov.in answers normally but with 0 records: a gap at the source, not in AirSense. Nothing to fix; collection resumes when CPCB publishes again."
+
+  # The monitor's reports: error high and drift above 0.3 fire; moderate drift does not.
+  - interval: 5m
+    input_series:
+      - series: 'airsense_forecast_error_high'
+        values: '0 0 1 1 1'
+      - series: 'airsense_drift_psi{input="pm25_24h"}'
+        values: '0.25 0.25 0.45 0.45 0.45'
+      - series: 'airsense_drift_psi{input="temperature_2m"}'
+        values: '0.05x4'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DataDrift
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: ForecastErrorHigh
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Forecasts are much worse than expected"
+              description: "Over the last 3 days the forecast error is above 1.5 x the test error and worse than simply assuming no change. A retrain may be started automatically (see the Monitoring tab)."
+      - eval_time: 15m
+        alertname: DataDrift
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Live inputs differ from the training data"
+              description: "The largest PSI (live, last 7 days, vs training rows of the same months) is 0.45 (limit 0.3). See the Monitoring tab for which inputs changed."

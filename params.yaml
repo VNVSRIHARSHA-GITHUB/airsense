@@ -134,3 +134,16 @@ guidance:                        # Stage 6 health guidance search
   qdrant_url: http://localhost:6333   # Qdrant server (container); env QDRANT_URL overrides
   collection: guidance
   embedding_model: sentence-transformers/all-MiniLM-L6-v2
+
+monitoring:                      # Stage 10: is the model still good?
+  eval_window_days: 3            # forecast vs actual over the last 3 days
+  error_ratio_limit: 1.5         # alert: error > 1.5 x test error ...
+  min_pairs: 100                 # ... and worse than "no change", with >= 100 forecast/actual pairs
+  drift_days: 7                  # live data of the last 7 days ...
+  drift_months: [10, 11]         # ... against training rows of the same months (Oct-Nov)
+  min_live_rows: 200             # fewer live values: "not enough data", no PSI
+  psi_moderate: 0.2              # PSI above: moderate change (amber)
+  psi_drift: 0.3                 # PSI above: drift (alert, may trigger a retrain)
+  drift_hour_ist: 22             # the hourly monitor run at 22:50 IST also checks drift
+  auto_retrain: false            # trigger airsense_retrain on drift or high error (on from 10.5)
+  retrain_cooldown_days: 3       # at most one automatic retrain every 3 days

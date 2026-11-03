@@ -93,3 +93,23 @@ groups:
         annotations:
           summary: "The collector fails (network or API error)"
           description: "The last collector runs ended with an error for over 35 minutes. See `logs/collector.log` and the airsense_live run in Airflow."
+
+  - name: airsense-model
+    rules:
+      # From the hourly forecast-vs-actual check (airsense_monitor -> evaluation.json).
+      - alert: ForecastErrorHigh
+        expr: airsense_forecast_error_high == 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Forecasts are much worse than expected"
+          description: "Over the last 3 days the forecast error is above 1.5 x the test error and worse than simply assuming no change. A retrain may be started automatically (see the Monitoring tab)."
+
+      # From the daily drift check (drift.json): PSI above 0.3 for any input.
+      - alert: DataDrift
+        expr: max(airsense_drift_psi) > 0.3
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Live inputs differ from the training data"
+          description: "The largest PSI (live, last 7 days, vs training rows of the same months) is {{ printf `%.2f` $value }} (limit 0.3). See the Monitoring tab for which inputs changed."
