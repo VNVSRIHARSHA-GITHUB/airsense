@@ -1,28 +1,28 @@
 {
-  "built_at_utc": "2026-11-01T14:05:18.447374+00:00",
+  "built_at_utc": "2026-11-03T11:43:52.126212+00:00",
   "source": "live",
-  "seconds": 0.0,
+  "seconds": 0.1,
   "tables": {
     "pm_live": {
-      "rows": 4088,
+      "rows": 4718,
       "cities": 14,
       "first_utc": "2026-10-20 09:30:00",
-      "last_utc": "2026-11-01 12:30:00",
+      "last_utc": "2026-11-03 09:30:00",
       "missing_fraction": {
-        "pm25_24h": 0.5501,
-        "n_stations_24h": 0.5501,
-        "pm25_lag_1h": 0.5536,
-        "pm25_lag_3h": 0.557,
-        "pm25_lag_6h": 0.5638,
-        "pm25_lag_12h": 0.5638,
-        "pm25_lag_24h": 0.5638,
-        "pm25_lag_48h": 0.5912,
-        "pm25_lag_72h": 0.5947,
-        "pm25_change_1h": 0.6267,
-        "pm25_change_6h": 0.783,
-        "pm25_change_24h": 0.7488,
-        "pm25_mean_72h": 0.2556,
-        "pm25_max_72h": 0.2556
+        "pm25_24h": 0.6072,
+        "n_stations_24h": 0.6072,
+        "pm25_lag_1h": 0.6102,
+        "pm25_lag_3h": 0.6102,
+        "pm25_lag_6h": 0.6102,
+        "pm25_lag_12h": 0.6102,
+        "pm25_lag_24h": 0.6102,
+        "pm25_lag_48h": 0.6162,
+        "pm25_lag_72h": 0.6221,
+        "pm25_change_1h": 0.6766,
+        "pm25_change_6h": 0.812,
+        "pm25_change_24h": 0.7823,
+        "pm25_mean_72h": 0.355,
+        "pm25_max_72h": 0.355
       }
     }
   }
