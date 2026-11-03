@@ -3,8 +3,8 @@
 version_live_data -> push_data -> commit_checkpoint -> gc_dvc_cache
 clean_airflow_logs, prune_old_images (independent)
 
-- The live snapshots (CPCB feed, Open-Meteo forecasts) cannot be downloaded
-  again, so once a day they are versioned with `dvc add` and copied to the DVC
+- The live snapshots (CPCB feed, Open-Meteo forecasts) and the saved AirSense
+  forecasts (Stage 10) cannot be produced again, so once a day they are versioned with `dvc add` and copied to the DVC
   remote with `dvc push`.
 - One Git commit per day records the data versions (`*.dvc`, `dvc.lock`) and the
   step reports, instead of 48 changed files every 30 minutes. Only those paths
@@ -27,9 +27,12 @@ from airflow.sdk import DAG
 sys.path.insert(0, str(Path(__file__).parent))  # the shared helper next to this file
 from airsense_common import DVC_POOL, in_project, record_run
 
-LIVE = "data/raw/live/datagov data/raw/live/openmeteo"
+# live snapshots and (Stage 10) the saved forecasts for the forecast-vs-actual check
+LIVE = "data/raw/live/datagov data/raw/live/openmeteo data/monitoring/forecasts"
 # the data versions and the step reports; only paths that exist are passed to Git
-CHECKPOINT_PATHS = "dvc.lock data/interim $(ls data/raw/live/*.dvc 2>/dev/null)"
+CHECKPOINT_PATHS = (
+    "dvc.lock data/interim $(ls data/raw/live/*.dvc data/monitoring/*.dvc 2>/dev/null)"
+)
 
 with DAG(
     dag_id="airsense_housekeeping",

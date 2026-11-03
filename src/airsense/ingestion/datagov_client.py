@@ -3,7 +3,13 @@
 Downloads a snapshot of the live feed for one pollutant (PM2.5) across all
 reporting stations and saves it as a timestamped CSV under
 data/raw/live/datagov/<UTC date>/<HHMM>.csv.
+
+Exit codes: 0 saved (also a partial snapshot), 99 the feed answered but had no
+records (a source-side gap, not our fault: Airflow marks the run "skipped"),
+1 anything else (no key, network or API errors after retries).
+Each run writes its result to logs/collector_status.json for the backend's metrics.
 """
+import json
 import logging
 import os
 import sys
@@ -22,6 +28,8 @@ log = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PARAMS_FILE = PROJECT_ROOT / "params.yaml"
 OUT_DIR = PROJECT_ROOT / "data" / "raw" / "live" / "datagov"
+STATUS_FILE = PROJECT_ROOT / "logs" / "collector_status.json"
+EXIT_SOURCE_EMPTY = 99  # Airflow's collect task treats this code as "skipped"
 
 API_URL = "https://api.data.gov.in/resource/{rid}"
 PAGE_SIZE = 200           # records per call; large pages time out on data.gov.in
@@ -88,13 +96,41 @@ def save_snapshot(records: list[dict], out_dir: Path = OUT_DIR) -> Path:
     return path
 
 
+def write_status(result: str, records: int, path: Path | None = None) -> None:
+    """Record this run's result (ok, partial, empty, error); keeps the last good time."""
+    path = path or STATUS_FILE
+    now = datetime.now(UTC).isoformat()
+    try:
+        last_ok = json.loads(path.read_text()).get("last_ok_utc")
+    except (OSError, ValueError):
+        last_ok = None
+    status = {"time_utc": now, "result": result, "records": records,
+              "last_ok_utc": now if result in ("ok", "partial") else last_ok}
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(status, indent=2))
+        tmp.replace(path)  # the backend never reads a half-written file
+    except OSError as exc:  # the status is for monitoring only; never fail the run
+        log.warning("Could not write %s: %s", path, exc)
+
+
 def main() -> int:
+    try:
+        return collect()
+    except Exception:
+        write_status("error", 0)
+        raise
+
+
+def collect() -> int:
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     load_dotenv(PROJECT_ROOT / ".env")
     api_key = os.environ.get("DATA_GOV_IN_API_KEY", "")
     if not api_key:
         log.error("DATA_GOV_IN_API_KEY is not set; check the .env file")
+        write_status("error", 0)
         return 1
 
     with open(PARAMS_FILE) as f:
@@ -104,8 +140,11 @@ def main() -> int:
     min_records = params["sources"]["datagov"].get("min_records", 200)
     records = fetch_all_records(resource_id, api_key)
     if not records:
-        log.error("Feed returned 0 records; nothing saved")
-        return 1
+        # The API answered normally but the feed is empty (seen on 1 Nov 2026,
+        # 18:35-19:10): a gap at the source. Not a pipeline fault, so not "failed".
+        log.warning("Source empty: the feed returned 0 records; nothing saved")
+        write_status("empty", 0)
+        return EXIT_SOURCE_EMPTY
 
     path = save_snapshot(records)
     if len(records) < min_records:
@@ -113,8 +152,10 @@ def main() -> int:
         # pipeline failure: keep the data, warn, and let the next run catch up.
         log.warning("Partial snapshot: %d records (expected >= %d) saved to %s",
                     len(records), min_records, path)
+        write_status("partial", len(records))
     else:
         log.info("Saved %d records to %s", len(records), path)
+        write_status("ok", len(records))
     return 0
 
 

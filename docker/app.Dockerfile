@@ -47,7 +47,7 @@ COPY model_server /app/model_server
 # Fail the build, not the running container, if a module loaded at run time is
 # missing. Some are imported only when used (e.g. Feast's DuckDB offline store
 # when feature_store.yaml is read), so a plain `import feast` would not notice.
-RUN /opt/venv/bin/python -c "import airsense.serving.service, airsense.serving.pipeline, \
+RUN /opt/venv/bin/python -c "import airsense.serving.service, airsense.serving.pipeline, airsense.serving.metrics, \
     airsense.guidance.index, mlflow.lightgbm, qdrant_client, dvc.cli, \
     sentence_transformers, feast.infra.online_stores.redis, \
     feast.infra.offline_stores.duckdb"

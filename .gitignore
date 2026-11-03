@@ -19,3 +19,4 @@ feature_repo/data/registry.db
 worklog.md
 data/qdrant/
 logs/
+data/monitoring/forecasts/

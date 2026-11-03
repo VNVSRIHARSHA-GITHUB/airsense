@@ -31,7 +31,10 @@ with DAG(
     on_failure_callback=record_run,
 ) as dag:
     # The collector retries pages itself (3 attempts); output also goes to
-    # logs/collector.log, which the Pipeline console reads.
+    # logs/collector.log, which the Pipeline console reads. Exit code 99 = the
+    # CPCB feed answered with no records (a gap at the source): the task and the
+    # steps after it are skipped instead of failed, and the console shows
+    # "Source empty" (Stage 10).
     collect = BashOperator(
         task_id="collect",
         bash_command=in_project(
@@ -41,6 +44,7 @@ with DAG(
         retries=1,
         retry_delay=timedelta(minutes=3),
         execution_timeout=timedelta(minutes=15),
+        skip_on_exit_code=99,
     )
     # validate_processed is a gate: if the processed data fails its checks, no
     # new features reach Redis and the page keeps the last good values.

@@ -11,17 +11,21 @@ Endpoints (the API contract, documented in the LLD):
     GET /model               the champion model and its metrics
     GET /guidance            advice for an AQI category and a user group
     GET /pipeline            pipeline status for the operators' console (read-only)
+    GET /metrics             Prometheus metrics (Stage 10; not forwarded by nginx)
 Interactive documentation: http://127.0.0.1:8000/docs
 """
 
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from airsense.common.settings import PROJECT_ROOT
+from airsense.serving.metrics import Metrics
 from airsense.serving.service import (
     FeatureStoreBusy,
     FeatureStoreDown,
@@ -98,9 +102,10 @@ class CityStatus(BaseModel):
     age_hours: float | None
 
 
-def create_app(service=None, pipeline=None) -> FastAPI:
+def create_app(service=None, pipeline=None, root=PROJECT_ROOT) -> FastAPI:
     """Build the app; tests pass fakes, normal runs create the real services."""
     state = {"service": service, "pipeline": pipeline}
+    metrics = Metrics(lambda: state["service"], root)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -135,6 +140,22 @@ def create_app(service=None, pipeline=None) -> FastAPI:
         CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"]
     )
 
+    @app.middleware("http")
+    async def count_requests(request: Request, call_next):
+        start = time.perf_counter()
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+            return response
+        finally:
+            route = request.scope.get("route")  # the template, e.g. /forecast/{city}
+            endpoint = getattr(route, "path", "other")
+            if endpoint != "/metrics":
+                metrics.observe_request(
+                    endpoint, request.method, status, time.perf_counter() - start
+                )
+
     def svc():
         return state["service"]
 
@@ -160,8 +181,11 @@ def create_app(service=None, pipeline=None) -> FastAPI:
         if city not in svc().cities:
             raise HTTPException(404, f"Unknown city '{city}'")
         try:
-            return svc().forecast(city, group)
+            result = svc().forecast(city, group)
+            metrics.observe_forecast(city, result)
+            return result
         except ModelServerError as exc:
+            metrics.observe_forecast(city, None, error=True)
             raise unavailable("Model server", exc) from None
         except FeatureStoreDown as exc:
             raise unavailable("Live data store", exc) from None
@@ -182,6 +206,11 @@ def create_app(service=None, pipeline=None) -> FastAPI:
     @app.get("/pipeline")
     def pipeline() -> dict:
         return state["pipeline"].get()
+
+    @app.get("/metrics", include_in_schema=False)
+    def prometheus_metrics() -> Response:
+        body, content_type = metrics.render()
+        return Response(body, media_type=content_type)
 
     return app
 

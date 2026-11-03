@@ -105,6 +105,9 @@ function workflowState(d) {
   const stale = live && live.minutes_ago != null && live.minutes_ago > WORKFLOWS.airsense_live.staleMin;
   if (failed.length) return { cls: "bad", line: `${failed.length} of ${runs.length} failed`, detail: `Failed: ${failed.map((w) => w.dag_id).join(", ")}` };
   if (stale) return { cls: "attention", line: "Airflow may be stopped", detail: `No live-data run since ${fmtWhenAgo(live.end_utc)}` };
+  if (live && live.state === "source_empty") {
+    return { cls: "attention", line: "CPCB feed empty", detail: `The latest live run, ${fmtWhenAgo(live.end_utc)}, found no data at the source; the pipeline itself is fine` };
+  }
   return {
     cls: "ok", line: `All ${runs.length} succeeded`,
     detail: live ? `Latest live-data run ${fmtWhenAgo(live.end_utc)}` : `${runs.length} workflows recorded`,
@@ -155,7 +158,8 @@ function cell(label, attrs, ...children) {
 const WORKFLOWS = {
   airsense_live: { what: "Collect live data, process, validate, refresh the live features", when: "Every 30 min, at :05 and :35", staleMin: 45, times: () => Array.from({ length: 48 }, (_, i) => [Math.floor(i / 2), i % 2 ? 35 : 5]) },
   airsense_retrain: { what: "Retrain, quality gate, register; serve a new champion", when: "Every Sunday at 13:00 IST, or started manually", staleMin: null, times: () => [[13, 0]], weekday: 0 },
-  airsense_housekeeping: { what: "Version the live data, daily Git checkpoint, clean-up", when: "Daily at 23:15 IST", staleMin: null, times: () => [[23, 15]] },
+  airsense_housekeeping: { what: "Version the live data and saved forecasts, daily Git checkpoint, clean-up", when: "Daily at 23:15 IST", staleMin: null, times: () => [[23, 15]] },
+  airsense_monitor: { what: "Save every city's forecast, to compare with the measurements 24 h later", when: "Every hour at :50", staleMin: 75, times: () => Array.from({ length: 24 }, (_, h) => [h, 50]) },
 };
 
 // The next scheduled start (schedules are in IST, UTC+5:30, no daylight saving).
@@ -173,7 +177,10 @@ function nextRun(meta, now = Date.now()) {
   return null;
 }
 
-const RUN_STATE = { success: ["ok", "Succeeded"], failed: ["bad", "Failed"], running: ["attention", "Running"] };
+const RUN_STATE = {
+  success: ["ok", "Succeeded"], failed: ["bad", "Failed"], running: ["attention", "Running"],
+  source_empty: ["attention", "Source empty"],  // the CPCB feed had no data; not a pipeline fault
+};
 
 function renderWorkflows(d) {
   const table = document.getElementById("workflows");

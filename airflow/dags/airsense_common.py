@@ -24,6 +24,20 @@ DVC_POOL = "dvc"
 # The last run of each DAG, for the Pipeline console (read by the backend, which
 # sees the project folder; no Airflow login or network access needed).
 RUNS_FILE = Path(PROJECT) / "logs" / "airflow_runs.json"
+# Written by the collector on every run; "empty" means the CPCB feed had no data.
+COLLECTOR_STATUS = Path(PROJECT) / "logs" / "collector_status.json"
+
+
+def _source_empty(run) -> bool:
+    """True if this live run's collector found the feed empty (task skipped, exit 99)."""
+    try:
+        st = json.loads(COLLECTOR_STATUS.read_text())
+        return st.get("result") == "empty" and (
+            run.start_date is None
+            or datetime.fromisoformat(st["time_utc"]) >= run.start_date
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def _iso(t) -> str | None:
@@ -43,6 +57,13 @@ def record_run(context) -> None:
         "end_date": _iso(run.end_date) or datetime.now(UTC).isoformat(),
         "reason": context.get("reason"),
     }
+    # A skipped collect task leaves the run "success"; the console should show why.
+    if (
+        run.dag_id == "airsense_live"
+        and entry["state"] == "success"
+        and _source_empty(run)
+    ):
+        entry["state"] = "source_empty"
     RUNS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(RUNS_FILE.with_suffix(".lock"), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)  # DAGs may finish at the same moment
