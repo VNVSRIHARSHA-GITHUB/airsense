@@ -5,8 +5,8 @@
    no target window of one set overlaps another.
 2b. Live rows (data/training_live/, Stage 10): the hours collected since Oct 2026.
    The newest `live_holdout_days` are kept aside ("recent live", reported only);
-   the rest join the TRAINING rows with a higher weight, so together they carry
-   `live_weight_share` of the total weight. They never enter validation or test,
+   the rest join the TRAINING rows, each repeated k times, so together they make
+   up `live_weight_share` of the training rows. They never enter validation or test,
    so the gate keeps comparing models on the same historical periods.
 3. Baselines: persistence (the current value for every horizon) and "same hour
    yesterday" (the value at t + h - 24, already known at t).
@@ -124,16 +124,22 @@ def live_split(
     )
 
 
-def live_weight(n_history: int, n_live: int, share: float, max_weight: float) -> float:
-    """Weight of one live row so live rows carry `share` of the total weight.
+def live_repeats(n_history: int, n_live: int, share: float, max_repeats: int) -> int:
+    """How many copies of each live row, so live rows make up `share` of the rows.
 
-    share = n_live * w / (n_history + n_live * w)  =>  w = share/(1-share) * n_history/n_live.
-    Capped at max_weight: with only a few days of live data, a huge weight would
-    make the model memorise those days.
+    share = n_live * k / (n_history + n_live * k)  =>  k = share/(1-share) * n_history/n_live,
+    rounded, at least 1. Capped at max_repeats: with only a few days of live data,
+    thousands of copies would make the model memorise those days.
+
+    Copies instead of a row weight: with the L1 objective LightGBM fits each leaf
+    to a median, and with unequal weights it needs a weighted median, which is far
+    slower (training took ~14x longer). For whole numbers, k copies count exactly
+    like weight k for the median.
     """
     if n_live == 0 or share <= 0:
-        return 1.0
-    return float(min(share / (1 - share) * n_history / n_live, max_weight))
+        return 1
+    k = round(share / (1 - share) * n_history / n_live)
+    return int(min(max(k, 1), max_repeats))
 
 
 def category_codes(params: dict) -> dict[str, dict[str, int]]:
@@ -440,47 +446,41 @@ def main() -> int:
     label = training_label(df["target"], df["pm25_24h"], mode)
     train_mask = train_mask & ~np.isnan(label)  # "change" needs a current value
     n_hist = int(train_mask.sum())
-    w_live = live_weight(
-        n_hist, n_live, cfg["live_weight_share"], cfg["live_weight_max"]
-    )
-    x = feature_matrix(df, features, train_mask, extra=live_train)
+    k = live_repeats(n_hist, n_live, cfg["live_weight_share"], cfg["live_repeat_max"])
+    live_copies = (
+        live_train.loc[live_train.index.repeat(k)] if n_live else None
+    )  # k copies of each live row (small: tens of thousands of rows x k)
+    x = feature_matrix(df, features, train_mask, extra=live_copies)
     y = label[train_mask]
     if n_live:
         y = np.concatenate(
-            [y, training_label(live_train["target"], live_train["pm25_24h"], mode)]
+            [y, training_label(live_copies["target"], live_copies["pm25_24h"], mode)]
         )
-    weight = None
-    if n_live:
-        weight = np.ones(len(y), dtype=np.float32)
-        weight[n_hist:] = w_live
     live_info = {
         "rows_train": n_live,
         "rows_recent": rows["live_recent"],
-        "weight": round(w_live, 3) if n_live else None,
-        "weight_share": round(n_live * w_live / (n_hist + n_live * w_live), 4)
-        if n_live
-        else 0.0,
+        "repeats": k if n_live else None,
+        "weight_share": round(n_live * k / (n_hist + n_live * k), 4) if n_live else 0.0,
         "holdout_days": cfg["live_holdout_days"],
         "first_target_utc": str(live_train["target_time_utc"].min())
         if n_live
         else None,
         "last_target_utc": str(live_train["target_time_utc"].max()) if n_live else None,
     }
-    del df, label, live_train
+    del df, label, live_train, live_copies
     train_set = lgb.Dataset(
         x,
         label=y,
-        weight=weight,
         feature_name=features,
         categorical_feature=categorical,
         free_raw_data=True,
     ).construct()
-    del x, y, weight
+    del x, y
     if n_live:
         log.info(
-            "Live rows: %d with weight %.2f (%.1f%% of the total weight)",
+            "Live rows: %d, each used %d times (%.1f%% of the training rows)",
             n_live,
-            w_live,
+            k,
             100 * live_info["weight_share"],
         )
     val_set = lgb.Dataset(
@@ -613,7 +613,7 @@ def main() -> int:
                 "rows_val": rows["val"],
                 "rows_test": rows["test"],
                 "rows_live_train": rows["live_train"],
-                "live_weight": live_info["weight"],
+                "live_repeats": live_info["repeats"],
                 "live_weight_share": live_info["weight_share"],
                 "live_holdout_days": cfg["live_holdout_days"],
                 "train_fraction": cfg["train_fraction"],

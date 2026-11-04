@@ -84,11 +84,12 @@ with DAG(
     )
     (
         before
-        >> dvc_stage("build_training", timeout_min=60, retries=0)
-        >> dvc_stage("build_training_live", timeout_min=20, retries=0)
-        >> dvc_stage("train", timeout_min=120, retries=0)  # memory-heavy: no retry
-        >> dvc_stage("gate", timeout_min=10, retries=0)
-        >> dvc_stage("register", timeout_min=30, retries=0)
+        >> dvc_stage("build_training", timeout_min=60, retries=0, verbose=True)
+        >> dvc_stage("build_training_live", timeout_min=20, retries=0, verbose=True)
+        # train is memory-heavy: no retry
+        >> dvc_stage("train", timeout_min=120, retries=0, verbose=True)
+        >> dvc_stage("gate", timeout_min=10, retries=0, verbose=True)
+        >> dvc_stage("register", timeout_min=30, retries=0, verbose=True)
         >> changed
         >> restart
     )

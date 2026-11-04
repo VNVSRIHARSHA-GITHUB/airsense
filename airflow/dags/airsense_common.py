@@ -82,12 +82,16 @@ def in_project(command: str) -> str:
     return f'set -euo pipefail; cd "{PROJECT}"; source .venv/bin/activate; {command}'
 
 
-def dvc_stage(stage: str, timeout_min: int = 15, retries: int = 1) -> BashOperator:
+def dvc_stage(
+    stage: str, timeout_min: int = 15, retries: int = 1, verbose: bool = False
+) -> BashOperator:
     """One DVC stage as one task. `-s` (single item): only this stage; the order
-    between stages is the DAG's job, so each step is visible in the graph."""
+    between stages is the DAG's job, so each step is visible in the graph.
+    verbose (`-v`): DVC logs every step and, on failure, the full reason; used
+    for the rare, long retrain steps, not the 30-minute live ones (short logs)."""
     return BashOperator(
         task_id=stage,
-        bash_command=in_project(f"dvc repro -s {stage}"),
+        bash_command=in_project(f"dvc repro {'-v ' if verbose else ''}-s {stage}"),
         pool=DVC_POOL,
         retries=retries,
         retry_delay=timedelta(minutes=2),

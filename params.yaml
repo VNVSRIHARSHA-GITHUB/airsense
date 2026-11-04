@@ -103,8 +103,8 @@ train:                           # Stage 4
   train_fraction: 1.0            # share of training rows used (lower it, e.g. 0.5, if memory is tight)
   target_mode: change            # "level" = predict PM2.5; "change" = predict the change from now
   shap_sample: 5000              # test rows explained with SHAP
-  live_weight_share: 0.1         # live rows (data/training_live) carry 10% of the training weight ...
-  live_weight_max: 20            # ... but one live row counts at most 20x (few days of data: no memorising)
+  live_weight_share: 0.1         # live rows (data/training_live): 10% of the training rows, by repeating each ...
+  live_repeat_max: 20            # ... at most 20 times (few days of data: no memorising)
   live_holdout_days: 2           # newest 2 days of live data: not trained on, error reported ("recent live")
   mlflow_experiment: airsense-pm25
 

@@ -128,15 +128,16 @@ def test_live_rows_are_appended_without_a_copy_of_the_history():
     assert x.tolist() == [[1.0, 10.0], [3.0, 30.0], [7.0, 70.0]]
 
 
-def test_live_weight_gives_the_share_and_is_capped():
-    from airsense.training.train import live_weight
+def test_live_repeats_give_the_share_and_are_capped():
+    from airsense.training.train import live_repeats
 
-    w = live_weight(n_history=900_000, n_live=10_000, share=0.1, max_weight=50)
-    assert w == pytest.approx(10.0)
-    assert 10_000 * w / (900_000 + 10_000 * w) == pytest.approx(0.1)
-    assert live_weight(900_000, 100, 0.1, max_weight=20) == 20  # few rows: capped
-    assert live_weight(900_000, 0, 0.1, 20) == 1.0
-    assert live_weight(900_000, 100, 0.0, 20) == 1.0
+    k = live_repeats(n_history=900_000, n_live=10_000, share=0.1, max_repeats=50)
+    assert k == 10
+    assert 10_000 * k / (900_000 + 10_000 * k) == pytest.approx(0.1)
+    assert live_repeats(900_000, 100, 0.1, max_repeats=20) == 20  # few rows: capped
+    assert live_repeats(900_000, 0, 0.1, 20) == 1
+    assert live_repeats(900_000, 100, 0.0, 20) == 1
+    assert live_repeats(1_000, 900_000, 0.1, 20) == 1  # never fewer than one copy
 
 
 def test_live_split_keeps_the_newest_days_apart_with_a_gap():
