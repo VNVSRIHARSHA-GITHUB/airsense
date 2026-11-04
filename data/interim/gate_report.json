@@ -1,12 +1,12 @@
 {
-  "checked_at_utc": "2026-10-23T07:48:46.050168+00:00",
-  "mlflow_run_id": "0fe9f02288e6415e9cb45588dd3fce7e",
+  "checked_at_utc": "2026-11-04T11:14:44.528918+00:00",
+  "mlflow_run_id": "c2b69f967db147b29b717fae58ef4b32",
   "passed": true,
   "checks": [
     {
       "check": "overall_skill",
       "passed": true,
-      "value": 0.2028,
+      "value": 0.2026,
       "threshold": 0.05,
       "detail": ""
     },
@@ -34,9 +34,29 @@
     {
       "check": "predictions_valid",
       "passed": true,
-      "value": "min 2.3, max 470.2, non-finite 0, no forecast 0.106%",
+      "value": "min 2.0, max 468.7, non-finite 0, no forecast 0.106%",
       "threshold": "finite, within [0, 1000], no forecast <= 1.0%",
       "detail": ""
     }
-  ]
+  ],
+  "info": {
+    "recent_live": {
+      "from_utc": "2026-11-02 10:30:00+00:00",
+      "to_utc": "2026-11-04 09:30:00+00:00",
+      "model": {
+        "n": 504,
+        "mae": 15.859280325360645,
+        "rmse": 29.468038796146867,
+        "aqi_accuracy": 0.6944444444444444,
+        "skill": 0.026909285487918377
+      },
+      "persistence": {
+        "n": 504,
+        "mae": 16.297843653058248,
+        "rmse": 29.626292322311663,
+        "aqi_accuracy": 0.7420634920634921,
+        "skill": 0.0
+      }
+    }
+  }
 }
