@@ -1,9 +1,10 @@
-# AirSense — Low-Level Design (serving)
+# AirSense — Low-Level Design (serving and monitoring)
 
 This document describes how the AirSense serving system is built: its components,
 the API contract, the request flow, the model input contract, error handling,
-configuration and tests. It covers the code in `model_server/`, `backend/`,
-`src/airsense/serving/`, `src/airsense/guidance/` and the web pages in `frontend/`
+monitoring, configuration and tests. It covers the code in `model_server/`,
+`backend/`, `src/airsense/serving/`, `src/airsense/guidance/`,
+`src/airsense/monitoring/`, `docker/monitoring/` and the web pages in `frontend/`
 (Forecast page and Pipeline console; their use is described in `docs/user_manual.md`).
 How these parts are deployed as containers, and how to run them, is in
 `docs/architecture.md`.
@@ -49,9 +50,12 @@ flowchart LR
 | Row builder | `src/airsense/serving/assemble.py` | Builds the 24 input rows exactly as training did | — | — |
 | Explanations | `src/airsense/serving/explain.py` | Turns SHAP values into the top factors in plain words | — | — |
 | Guidance index | `src/airsense/guidance/index.py`, `guidance_docs/` | Builds (DVC stage `guidance_index`) and searches the health-advice collection | `guidance_docs/*.md` | Qdrant collection `guidance`, `data/interim/guidance_index.json` |
-| Pipeline status | `src/airsense/serving/pipeline.py` | Read-only summary for the operators' console: steps and graph, `dvc status`, step reports, throughput, gate, registry, collection health, recent log problems; cached 60 s | `dvc.yaml`, `data/interim/*.json`, snapshot folder, `logs/*.log` | — |
+| Pipeline status | `src/airsense/serving/pipeline.py` | Read-only summary for the operators' console: steps and graph, `dvc status`, step reports, throughput, gate, registry, collection health, recent log problems, Airflow runs, alerts, the monitor's reports; cached 60 s | `dvc.yaml`, `data/interim/*.json`, snapshot folder, `logs/*.log`, `logs/airflow_runs.json`, `logs/alerts/alerts.json`, `data/monitoring/reports/*.json` | — |
+| Metrics | `src/airsense/serving/metrics.py` | Prometheus metrics for `GET /metrics`: request counters and histograms (middleware), plus values read when Prometheus scrapes (§7) | the service's health check, data files, `logs/collector_status.json`, the monitor's reports | — |
+| Alert store | `src/airsense/monitoring/alerts.py` | Keeps the alerts Alertmanager posts to `POST /alerts`, by fingerprint, for the console | — | `logs/alerts/alerts.json` |
+| Model monitoring | `src/airsense/monitoring/record_forecasts.py`, `evaluate.py`, `drift.py`; `airflow/dags/monitor_decision.py` | Run by the hourly `airsense_monitor` workflow, not by the backend: save served forecasts, compare with actuals, check drift, decide on a retrain (§7) | the backend's `/forecast`, processed live data, training data, saved Open-Meteo snapshots | `data/monitoring/forecasts/`, `data/monitoring/reports/`, `data/monitoring/retrain_trigger.json` |
 | Settings | `src/airsense/common/settings.py` | One place for the project folder, `params.yaml` with environment overrides, and the Feast store with the Redis address; the same code runs on the laptop and in the containers | `params.yaml`, `feature_repo/feature_store.yaml`, environment | — |
-| Web pages | `frontend/` (HTML, CSS, JavaScript, Chart.js included) | Forecast page for users, Pipeline console (four tabs) for operators; light and dark theme; one time format ("Mon 2 Nov, 11:00 IST"); call the API over HTTP only | the API | browser storage: the theme choice only |
+| Web pages | `frontend/` (HTML, CSS, JavaScript, Chart.js included) | Forecast page for users, Pipeline console (five tabs, the last one Monitoring) for operators; light and dark theme; one time format ("Mon 2 Nov, 11:00 IST"); call the API over HTTP only | the API | browser storage: the theme choice only |
 
 **Why two serving processes.** The model server is MLflow's standard way to serve a
 registered model; it knows nothing about cities, weather or users. The backend owns
@@ -73,9 +77,9 @@ model store is mounted read-only.
 ## 2. API contract
 
 Base URL: `http://127.0.0.1:8000` (in the containers the web pages reach it as `/api`
-through nginx). All endpoints are `GET`, return JSON, and are
-documented interactively at `/docs` (OpenAPI, generated from the schemas in
-`backend/main.py`).
+through nginx). The public endpoints are `GET` and return JSON; two more are internal
+(for Prometheus and Alertmanager, not forwarded by nginx). All are documented
+interactively at `/docs` (OpenAPI, generated from the schemas in `backend/main.py`).
 
 ### 2.1 Endpoints
 
@@ -87,6 +91,8 @@ documented interactively at `/docs` (OpenAPI, generated from the schemas in
 | `GET /model` | — | 200: champion model and its metrics | — |
 | `GET /guidance` | `category` (query, required: `Good` · `Satisfactory` · `Moderate` · `Poor` · `Very Poor` · `Severe`); `group` (as above) | 200: best-matching advice | 422 invalid value · 503 guidance index unavailable |
 | `GET /pipeline` | — | 200: pipeline status for the operators' console | — (a failed `dvc status` is reported in the body) |
+| `GET /metrics` (internal) | — | 200: Prometheus text format (§7) | — |
+| `POST /alerts` (internal) | Alertmanager webhook body (`alerts[]`) | 200: `{"received": n}` | — |
 
 ### 2.2 Status codes
 
@@ -96,7 +102,7 @@ documented interactively at `/docs` (OpenAPI, generated from the schemas in
 | 404 | The city is not one of the 14 configured cities | `/forecast/Atlantis` |
 | 422 | A parameter has a value outside its allowed set (checked by FastAPI from the schema) | `group=everyone` |
 | 503 | A dependency is down; the client may retry later. The cause is logged, not sent | model server stopped |
-| 500 | Not expected; any unhandled error. Covered by tests for every known failure (§8) | — |
+| 500 | Not expected; any unhandled error. Covered by tests for every known failure (§10) | — |
 
 ### 2.3 `GET /forecast/{city}` response
 
@@ -175,12 +181,15 @@ When no forecast is possible:
 - **`/model`** — `{name, version, run_id, target_mode, val_mae, test_mae, test_skill, trained_at, training_data_md5}` from the MLflow run of the champion.
 - **`/guidance`** — list (one item) of the guidance object described above.
 - **`/pipeline`** — `{generated_at_utc, dvc_status_error, stages[], edges[], throughput[], gate, registry, champion, collection, recent_problems[]}`:
-  - `stages[]`: `{name, cmd, status, reasons[], last_run_utc, report_file, report}`, where `status` is `up to date`, `changed` (with the changed inputs as reasons), `runs every time` or `unknown` (if `dvc status` failed, e.g. while a pipeline run holds DVC's lock);
+  - `stages[]`: `{name, cmd, status, reasons[], last_run_utc, report_file, report}`, where `status` is `up to date`, `changed` (with the changed inputs as reasons), `runs every time`, `waits for retrain` (`build_training_live`: its inputs grow every 30 min by design; it runs with the next retrain) or `unknown` (if `dvc status` failed, e.g. while a pipeline run holds DVC's lock);
   - `edges[]`: `[from, to]` pairs, derived from `dvc.yaml` (an output of one step is an input of the other);
   - `throughput[]`: `{stage, rows, seconds, rows_per_second}` from each step's report;
   - `collection`: last snapshot time and age, snapshots in the last 24 h (48 expected), gaps longer than 45 min (`{from_utc, to_utc, minutes, ongoing}`; the start of the 24-hour window and "now" count as edges, so a stopped collector shows as an ongoing gap), snapshot times;
   - `recent_problems[]`: the newest WARNING/ERROR lines of `logs/*.log`;
-  - `workflows[]`: `{dag_id, state, run_type, start_utc, end_utc, minutes_ago, duration_min, url}`, the latest run of each Airflow workflow, read from `logs/airflow_runs.json` (written by the DAGs when a run ends; Stage 9), and `airflow_url` for the links.
+  - `workflows[]`: `{dag_id, state, run_type, start_utc, end_utc, minutes_ago, duration_min, url}`, the latest run of each Airflow workflow, read from `logs/airflow_runs.json` (written by the DAGs when a run ends; Stage 9), and `airflow_url` for the links; `state` is `success`, `failed`, `running` or `source_empty` (the collector found the CPCB feed empty);
+  - `alerts`: `{firing[], resolved[]}` (resolved: the newest 10 of the last 7 days), each `{alertname, severity, status, summary, description, starts_at, ends_at}`;
+  - `monitoring`: `{evaluation, drift, decision, last_trigger, auto_retrain, cooldown_days, drift_hour_ist}`, the monitor's reports (each with `age_hours`) or `null` where none exists yet;
+  - `monitoring_links`: the Grafana, Prometheus and Alertmanager addresses for the console's links.
   The result is cached for `serving.pipeline_cache_seconds` (60), so console refreshes do not run `dvc status` each time.
 
 ---
@@ -425,7 +434,64 @@ moment"); the API's messages say only what is unavailable.
 
 ---
 
-## 7. Configuration and operations
+## 7. Monitoring
+
+### 7.1 Metrics (`GET /metrics`)
+
+One Prometheus registry per app. Counted while requests happen (middleware, by route
+template so `/forecast/Delhi` and `/forecast/Pune` are one series; `/metrics` itself
+is not counted):
+
+| Metric | Type | Labels |
+|---|---|---|
+| `airsense_http_requests_total` | counter | `endpoint`, `method`, `status` |
+| `airsense_http_request_duration_seconds` | histogram | `endpoint` |
+| `airsense_forecasts_total` | counter | `city`, `result` (`made`, `unavailable`, `error`) |
+| `airsense_model_call_seconds` | histogram | — |
+
+Read when Prometheus scrapes (a custom collector, cached 15 s so a scrape stays cheap):
+
+| Metric | Meaning |
+|---|---|
+| `airsense_dependency_up{dependency}` | `model_server`, `feature_store`, `champion_up_to_date` (1/0) |
+| `airsense_champion_version` | model version being served |
+| `airsense_data_age_hours{city}`, `airsense_city_has_data{city}` | age of the newest PM2.5 value per city |
+| `airsense_snapshots_last_24h`, `airsense_minutes_since_last_snapshot` | live collection |
+| `airsense_collector_last_result{result}`, `airsense_collector_last_run_timestamp_seconds`, `airsense_collector_last_ok_timestamp_seconds` | from `logs/collector_status.json` (`ok`, `partial`, `empty`, `error`) |
+| `airsense_forecast_mae{forecast}` (`model`, `no_change`), `airsense_forecast_pairs`, `airsense_forecast_skill`, `airsense_forecast_error_limit`, `airsense_forecast_error_high`, `airsense_forecast_mae_by_horizon{hours_ahead}`, `airsense_forecast_evaluated_timestamp_seconds` | from `evaluation.json` |
+| `airsense_drift_psi{input}`, `airsense_drift_level{input}`, `airsense_drift_checked_timestamp_seconds` | from `drift.json` |
+
+A missing file means the metric is absent (not 0), so "no data" is never mistaken for
+"all good".
+
+### 7.2 Alerts
+
+Prometheus evaluates `docker/monitoring/alert_rules.yml` every 30 s (12 rules, listed
+in `docs/architecture.md` §6) and sends firing alerts to Alertmanager, which groups
+them by name (first message after 30 s, updates at most every 5 min, repeat after 6 h)
+and posts them to the backend's `POST /alerts`, also when they resolve. A down model
+server or Redis inhibits HighErrorRate and SlowForecasts. `AlertStore` keeps the
+latest status per alert fingerprint in `logs/alerts/alerts.json` (atomic write; firing
+until resolved, resolved ones for 7 days, at most 50). Alertmanager sends year 1 as the
+end time of a firing alert; the store keeps `ends_at` only for resolved ones.
+
+### 7.3 Model monitoring (`airsense_monitor`, hourly at :50)
+
+| Task | Code | Output |
+|---|---|---|
+| `record_forecasts` | asks the backend for every city's forecast (as users get it) | `data/monitoring/forecasts/<date>/<HHMM>.parquet`: model version, city, start time and value, hours ahead, target time, forecast |
+| `evaluate` | `evaluate.py`: saved forecasts whose target hour has passed, matched with `data/processed/live_city_hourly` (24-hour average at the target hour); a forecast saved by several runs (same city, start time, hours ahead) counts once, the newest copy | `evaluation.json`: last 3 days, model and "no change" error, skill, pairs, by hours ahead (1–6, 7–12, 13–24 h) and city, 14 daily values; `error_high` = error > 1.5 × test error **and** worse than "no change" **and** ≥ 100 pairs; the test error is the served champion's (from the registry; a retrained model that was not promoted does not move the limit), `test_mae_from` says which |
+| `drift_due`, `check_drift` | `drift.py`, at 22:50 IST and in manual runs: PSI = Σ (live% − train%) · ln(live% / train%), 10 bins at the training deciles, ε = 1e-4; live: last 7 days of `pm_live` and the observed hours of the Open-Meteo snapshots (same `weather_features` code as training); reference: training rows (one horizon) of the same months | `drift.json`: per input PSI, level (stable < 0.2 ≤ moderate ≤ 0.3 < drift; "not enough data" under 200 values), medians |
+| `decide_retrain`, `trigger_retrain` | `monitor_decision.py` (standard library + PyYAML: it runs in Airflow's environment): retrain if `error_high`, or `drift` in a report at most 26 h old, `auto_retrain` is on, and the last automatic start is over 3 days ago | `retrain_decision.json` (every run, with the reason), `retrain_trigger.json` (when started); `airsense_retrain` started |
+
+`evaluate` and `check_drift` read files the 30-minute live workflow rewrites, so they
+use the same one-slot DVC pool. The saved forecasts are versioned daily by
+housekeeping (`dvc add data/monitoring/forecasts`); the reports are hourly state and
+not in Git.
+
+---
+
+## 8. Configuration and operations
 
 | Setting | Value | Purpose |
 |---|---|---|
@@ -436,6 +502,11 @@ moment"); the API's messages say only what is unavailable.
 | `serving.pipeline_cache_seconds` | 60 | console data rebuilt at most once a minute |
 | `serving.airflow_url` | `http://localhost:8081` | Airflow UI, linked from the console's workflows panel |
 | `serving.dvc_status_timeout_seconds` | 60 | `dvc status` for the console gives up after this |
+| `serving.grafana_url`, `prometheus_url`, `alertmanager_url` | `http://localhost:3000`, `:9090`, `:9093` | linked and embedded on the console's Monitoring tab |
+| `monitoring.eval_window_days`, `error_ratio_limit`, `min_pairs` | 3, 1.5, 100 | forecast-vs-actual window and the "error high" rule |
+| `monitoring.drift_days`, `drift_months`, `min_live_rows` | 7, [10, 11], 200 | drift: live window, reference months, minimum values |
+| `monitoring.psi_moderate`, `psi_drift`, `drift_hour_ist` | 0.2, 0.3, 22 | drift levels; the daily check runs at 22:50 IST |
+| `monitoring.auto_retrain`, `retrain_cooldown_days` | true, 3 | automatic retrain, at most every 3 days |
 | `serving.weather_past_days` / `weather_forecast_days` | 2 / 3 | hours needed for "now", 24-hour rain and *t* + 24 |
 | `serving.top_factors` | 6 | factors in the explanation (plus "all other factors") |
 | `guidance.docs_dir` | `guidance_docs` | source texts |
@@ -457,7 +528,7 @@ docker-compose sets these variables, the laptop leaves them unset:
 | `MODEL_SERVER_HOST` / `MODEL_SERVER_PORT` | `0.0.0.0` / 5002 | where `serve.sh` listens (laptop: 127.0.0.1) |
 | `HF_HUB_OFFLINE` | `1` | the embedding model is loaded from the mounted cache, no download |
 
-**Running in containers:** `docs/architecture.md` §6.
+**Running in containers:** `docs/architecture.md` §8.
 
 **Running on the laptop** (development; project root, virtual environment active).
 Redis and Qdrant are needed in both cases; Docker Compose can start just those two:
@@ -477,7 +548,7 @@ which nginx forwards to the backend).
 
 ---
 
-## 8. Performance
+## 9. Performance
 
 Measured on the development laptop (CPU only, 12 threads):
 
@@ -490,13 +561,15 @@ Measured on the development laptop (CPU only, 12 threads):
 | Building the guidance index (18 texts) | 59 s on the first run, almost all of it the one-time 90 MB model download; about 20 s later |
 | Container start (`docker compose up`) | Redis and Qdrant healthy in ≈ 11 s, model server ≈ 17–35 s, backend ≈ 38–46 s (loads the embedding model) |
 | Failure detection | Redis or backend down: answer within 1 s; an address that does not answer: 3 s |
+| Alerts (laptop, 4 Nov) | a stopped model server or backend: pending at once, firing after the 2-minute `for`, on the console about 1 min later; resolved within about 1 min of the restart, on the console within Alertmanager's 5-minute update interval |
+| Monitor run | about 15 s per hourly run (record, evaluate, decide); with the daily drift check about 20 s |
 
 Memory: limits in docker-compose are 3 GB (backend) and 1.5 GB (model server); the backend holds one LightGBM booster, the weather table (14 cities × 120
 hours) and the small embedding model; the model server holds one booster.
 
 ---
 
-## 9. Tests
+## 10. Tests
 
 | Test file | What it checks |
 |---|---|
@@ -507,7 +580,13 @@ hours) and the small embedding model; the model server holds one booster.
 | `tests/unit/test_settings.py` | `params.yaml` with and without environment overrides; the Redis address replaced while its options are kept (no connection made) |
 | `tests/unit/test_service.py` (weather, robustness) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept; an empty integer input gives no forecast; a failed online read is retried once, then reported; an unreachable Redis is reported as "store down"; no technical error text in the warnings |
 | `tests/unit/test_pipeline.py` | steps, reports and graph from a small `dvc.yaml`; status and reasons from `dvc status` output; throughput from different report layouts; gaps in the collection (including a stopped collector as an ongoing gap); newest log problems; caching; a failed `dvc status`; Airflow workflows from the runs file (order, age, run duration, link; nothing shown without Airflow) |
-| `docs/ui_test_checklist.md` | 35 manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails) |
+| `tests/unit/test_metrics.py` | `/metrics` text: requests and forecasts counted, values read on scrape, the monitor's reports as metrics; a scrape still works without the collector status or any snapshot |
+| `tests/unit/test_alerts.py` | firing then resolved (kept by fingerprint); old resolved alerts dropped; `POST /alerts` stores what Alertmanager sends |
+| `tests/unit/test_record_forecasts.py`, `test_monitoring_checks.py` | saved forecast rows; forecast/actual matching (each forecast once, newest copy); the "error high" rule; PSI on equal and shifted data; drift levels and "not enough data" |
+| `tests/unit/test_monitor_decision.py` | retrain reasons, auto-retrain off, 26-hour drift age, cooldown; decision files written |
+| `tests/unit/test_datagov_client.py` | empty feed → exit code 99 and "empty" status (last good time kept); network failure → "error"; snapshots written only where the test points |
+| `tests/monitoring/alert_rules_test.yml` | `promtool test rules`: BackendDown timing, HighErrorRate, SlowForecasts only with traffic, LiveDataStale, CPCBFeedEmpty, ForecastErrorHigh and DataDrift (6 scenarios) |
+| `docs/ui_test_checklist.md` | manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails, the Monitoring tab) |
 
 The tests need no network, no running servers and no model download; they run in the
 pre-commit hook with the rest of the quick suite.
@@ -515,12 +594,15 @@ pre-commit hook with the rest of the quick suite.
 End-to-end checks on real data in the containers (manual): `/health` all true;
 `/forecast/Delhi` returns 24 hours, factors and guidance; then each part stopped or
 crashed in turn (model server, Redis, Qdrant, backend crash, backend stopped, whole
-system) — results in `docs/architecture.md` §5.
+system), and the monitoring tests (alerts and an automatic retrain) — results in
+`docs/architecture.md` §7.
 
 ---
 
-## 10. Planned changes
+## 11. Possible extensions
 
-| Stage | Change |
+| Change | Why |
 |---|---|
-| 10 | Request and latency metrics from the backend; live-versus-forecast error tracking from the saved weather snapshots and later actuals |
+| E-mail or chat receiver in Alertmanager | alerts reach someone who is not looking at the console |
+| Start Airflow with the laptop (system service) | no collection gaps after a reboot or a closed terminal |
+| Map view of the cities on the Forecast page | see regional patterns at a glance |

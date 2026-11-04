@@ -2,7 +2,7 @@
 
 Manual checks of the two web pages, run in a browser against the real system. The API and the logic behind the pages are covered by the automated tests (`pytest`); these checks cover what only a person can judge: layout, wording, and behaviour when something fails. The results feed the test report (Stage 11).
 
-**Setup:** the containers running (`docker compose up -d`, see `docs/architecture.md` §6), or on the laptop the model server (`bash model_server/serve.sh`), backend (`uvicorn main:app --app-dir backend --port 8000`) and frontend (`python -m http.server 8080 --directory frontend`) with Redis and Qdrant (`docker compose up -d redis qdrant`); in the container setup, "stop the model server" means `docker compose stop model-server` (and likewise for the backend); live features refreshed (`dvc repro feast_online`) less than 4 hours ago, unless a check says otherwise. Browser: Chrome or Firefox; phone checks with the browser's device toolbar (F12, then Ctrl+Shift+M) at 400 px width, or a real phone.
+**Setup:** the containers running (`docker compose up -d`, see `docs/architecture.md` §8), or on the laptop the model server (`bash model_server/serve.sh`), backend (`uvicorn main:app --app-dir backend --port 8000`) and frontend (`python -m http.server 8080 --directory frontend`) with Redis and Qdrant (`docker compose up -d redis qdrant`); in the container setup, "stop the model server" means `docker compose stop model-server` (and likewise for the backend); live features refreshed (`dvc repro feast_online`) less than 4 hours ago, unless a check says otherwise. Browser: Chrome or Firefox; phone checks with the browser's device toolbar (F12, then Ctrl+Shift+M) at 400 px width, or a real phone.
 
 The checks below are for the current layout (tabs, light and dark theme, hover details; redesigned on 1 Nov 2026 from a single long page per view).
 
@@ -45,8 +45,8 @@ The checks below are for the current layout (tabs, light and dark theme, hover d
 
 | ID | Check | Steps | Expected | Result |
 |---|---|---|---|---|
-| C1 | Page loads | Open http://localhost:8080/pipeline.html | Four summary cards with a status word each; tabs Workflows, Pipeline, Live data, Model | |
-| C2 | Cards open tabs | Click each card | The matching tab opens; the address ends with #workflows, #pipeline, #live or #model; reloading keeps that tab | |
+| C1 | Page loads | Open http://localhost:8080/pipeline.html | Five summary cards with a status word each; tabs Workflows, Pipeline, Live data, Model, Monitoring | |
+| C2 | Cards open tabs | Click each card | The matching tab opens; the address ends with #workflows, #pipeline, #live, #model or #monitoring; reloading keeps that tab | |
 | C3 | Scheduled workflows | After an Airflow run, press Refresh; compare with the Airflow UI | One row per workflow: latest run, next run, how long it took, Succeeded/Failed as in Airflow; "Open in Airflow" opens that workflow; with Airflow stopped for over 45 min, *airsense_live* shows Overdue and the card says "Airflow may be stopped" | |
 | C4 | Step status matches DVC | Run `dvc status`, compare with the Pipeline tab | Same steps shown as changed / up to date (the console may be up to 1 min behind) | |
 | C5 | Step details | Click a step in the graph and a name in the table | Details beside the graph: command, last run, report values, and the reason if it changed; the table row is highlighted | |
@@ -54,9 +54,13 @@ The checks below are for the current layout (tabs, light and dark theme, hover d
 | C7 | Collection timeline | Compare pink boxes with the snapshot files in `data/raw/live/datagov/` | Missing half-hours are pink; hover shows the time; gaps listed with times; if Airflow was stopped, an ongoing gap "still missing" (never "No gaps" with 0 collected) | |
 | C8 | Model and gate | Compare with `data/interim/registry.json` and `gate_report.json` | Same version and metrics; 5 checks in plain words with ticks | |
 | C9 | Warnings | Compare with the end of `logs/collector.log` | Latest warnings and errors listed, newest first; no API key visible | |
-| C10 | Backend down | Stop the backend, press Refresh | Red bar explaining the status cannot be loaded | |
+| C10 | Backend down | Stop the backend, press Refresh; then reload the page | Red bar explaining the status cannot be loaded; after a reload only the bar and the header, no empty sections | |
 | C11 | Dark theme | Switch theme on the console | Cards, graph, tables and chart readable in both themes | |
-| C12 | Phone width | Open at 400 px | Cards stacked; tables shown as stacked rows (label and value); graph hidden, the steps table is the list; long log lines wrap | |
+| C12 | Phone width | Open at 400 px | Cards stacked; tables shown as stacked rows (label and value); graph hidden, the steps table is the list; long log lines wrap; the tab bar scrolls sideways and the selected tab is in view | |
+| C13 | Monitoring tab | Open the Monitoring tab; compare with `data/monitoring/reports/*.json` | Forecast error, "no change" error, skill and pairs as in `evaluation.json`; a daily chart; the table by hours ahead ("1–6 hours ahead" …); drift bars with the 0.2 and 0.3 marks, values and levels as in `drift.json`; the latest retrain decision with its reason | |
+| C14 | An alert on the console | Stop the model server for 3 min (`docker compose stop model-server`), refresh, then start it | Monitoring card red ("Problem"), "The model server is down" listed as Critical with what to check; after the restart it moves to *Recently resolved* with its duration within about 5 min | |
+| C15 | Grafana panels | Open the Monitoring tab on the laptop; switch the theme | Four live panels load within a few seconds and follow the theme; the four links open Grafana, Prometheus and Alertmanager. On another device: a note that they work on the laptop only | |
+| C16 | Error above the limit | When the model error is above its limit but better than "no change" | The Model error figure is amber with "above the limit, but better than “no change”: no alert" | |
 
 ## Result summary
 

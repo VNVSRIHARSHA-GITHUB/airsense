@@ -14,14 +14,19 @@ ahead) counts once: the newest saved copy is kept.
 Writes data/monitoring/reports/evaluation.json: error of both over the last
 `eval_window_days`, by hours ahead and by city, a daily series for the console,
 and `error_high` - true when the model's error is above `error_ratio_limit` x its
-test error AND worse than "no change" (needs at least `min_pairs` pairs). The
+test error AND worse than "no change" (needs at least `min_pairs` pairs). "Its test
+error" is the served champion's (MLflow registry), not the latest training run's:
+a retrain that was not promoted must not move the limit. If the registry cannot
+be read, the latest training run's test error is used, and the report says so. The
 backend turns the file into Prometheus metrics; the ForecastErrorHigh alert and
 the retrain decision use `error_high`.
 """
 
 import json
 import logging
+import os
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -128,6 +133,39 @@ def evaluate(
     }
 
 
+def champion_test_mae(model_name: str) -> tuple[float, str] | None:
+    """(test MAE, version) of the registry's champion, or None if unavailable."""
+    try:
+        import mlflow
+        from mlflow import MlflowClient
+
+        mlflow.set_tracking_uri(
+            os.environ.get("MLFLOW_TRACKING_URI")
+            or f"sqlite:///{PROJECT_ROOT / 'mlflow.db'}"
+        )
+        client = MlflowClient()
+        mv = client.get_model_version_by_alias(model_name, "champion")
+        mae = client.get_run(mv.run_id).data.metrics["test_model_mae"]
+        return float(mae), str(mv.version)
+    except Exception as exc:  # noqa: BLE001 - any registry problem: use the fallback
+        log.warning("Champion's test error not readable from MLflow: %s", exc)
+        return None
+
+
+def reference_test_mae(
+    champion: Callable[[], tuple[float, str] | None], train_metrics: Path
+) -> tuple[float | None, str]:
+    """The test error the limit is based on, and where it came from."""
+    got = champion()
+    if got:
+        return got[0], f"champion version {got[1]}"
+    try:
+        mae = json.loads(train_metrics.read_text())["test"]["model"]["mae"]
+        return float(mae), "latest training run (registry not readable)"
+    except (OSError, ValueError, KeyError):
+        return None, "none: the error limit is not checked"
+
+
 def write_json(obj: dict, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
@@ -139,16 +177,16 @@ def main() -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
-    cfg = load_params()["monitoring"]
-    try:
-        test_mae = json.loads(TRAIN_METRICS.read_text())["test"]["model"]["mae"]
-    except (OSError, ValueError, KeyError):
-        test_mae = None
-        log.warning(
-            "No test error in %s: the error limit is not checked", TRAIN_METRICS
-        )
+    params = load_params()
+    cfg = params["monitoring"]
+    name = params["registry"]["model_name"]
+    test_mae, source = reference_test_mae(
+        lambda: champion_test_mae(name), TRAIN_METRICS
+    )
+    log.info("Test error for the limit: %s (%s)", test_mae, source)
     pairs = match(load_forecasts(FORECASTS), load_actuals(ACTUALS))
     report = evaluate(pairs, cfg, test_mae, datetime.now(UTC))
+    report["test_mae_from"] = source
     write_json(report, REPORT)
     o = report["overall"]
     log.info(

@@ -74,6 +74,7 @@ The same 9 variables with the suffix `_target`. Training: archive weather (what 
 | Weather features | `weather_features()` | Relabelled −30 min to the PM2.5 hour |
 | Calendar | `calendar_features()` | Computed when the training set is built and at serving time; not stored |
 | Training rows | `build_training.py` | Feast point-in-time join for *t*; the same result looked up at *t + h* for target and target weather; rows without a target dropped (no imputation) |
+| Live training rows | `build_training_live.py` | The same `expand_horizon()` on the live data (live PM2.5 features + observed weather); rows without a target or with incomplete weather dropped. In training they join only the training split, each repeated so they make up `train.live_weight_share` (10 %) of the rows, at most 20 copies; the newest 2 days are held back and reported ("recent live") |
 
 All lags and windows come from `params.yaml → features`; the newest features need 72 hours of history (`min_history_hours()`), which a unit test confirms gives the same values as the full history.
 

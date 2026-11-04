@@ -179,6 +179,9 @@ All outputs are Parquet (partitioned by city) or JSON, produced by the DVC pipel
 | `data/features/pm_live/` | `build_features.py live` | The same PM2.5 features from the live feed (for serving) |
 | `feature_repo/` | Feast (`feast apply`) | Feature definitions: entity `city`, views `pm_history`, `weather_history`, `pm_live` |
 | `data/training/h01.parquet … h24.parquet` | `build_training.py` (Feast point-in-time join) | The training table: one row per (city, hour, horizon) |
+| `data/training_live/h01.parquet … h24.parquet` | `build_training_live.py` | The same columns from the collected live data (`pm_live` and the observed hours of the Open-Meteo snapshots, newest complete value per hour); added to the training rows at a retrain |
+| `data/monitoring/forecasts/<date>/<HHMM>.parquet` | `record_forecasts.py` (hourly) | Every city's forecast as served, for the comparison with the measurements; versioned daily with DVC |
+| `data/monitoring/reports/evaluation.json`, `drift.json`, `retrain_decision.json` | `evaluate.py`, `drift.py`, `monitor_decision.py` | Forecast vs actual (last 3 days), drift per input (PSI), the latest retrain decision; rewritten every hour, not in Git |
 | `data/interim/features_*_metrics.json`, `training_metrics.json`, `feast_online_metrics.json` | the scripts above | Row counts, missing fractions, timing, online-store freshness and consistency |
 
 **Training table:** 14,322,291 rows × 43 columns, Jan 2018 – Mar 2023 (≈ 5.25 years), 24 horizons; built from 619,547 city-hours, of which 596,864 (96.3%) have a target. Full list of columns: `docs/features.md`.

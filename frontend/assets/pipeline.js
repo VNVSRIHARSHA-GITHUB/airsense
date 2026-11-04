@@ -545,6 +545,7 @@ const INPUT_NAME = {
   temperature_2m: "Temperature", relative_humidity_2m: "Humidity", wind_speed_10m: "Wind speed", rain_24h: "Rain over 24 hours",
 };
 const LEVEL = { stable: "ok", moderate: "attention", drift: "bad" };
+const ALERT_PSI = 0.3;  // the DataDrift alert's own limit (docker/monitoring/alert_rules.yml)
 
 function monitoringState(d) {
   const m = d.monitoring || {};
@@ -600,10 +601,17 @@ function renderEvaluation(d) {
     `Every forecast the service showed is saved and, once its hour has passed, compared with what was measured. Last ${ev.window_days} days; checked ${fmtWhenAgo(ev.evaluated_at_utc)}.`,
     stale ? el("span", { class: "warn-line" }, "This check is old: is Airflow running?") : null);
   const enough = o.pairs >= ev.min_pairs;
+  // The alert needs all three: above the limit, worse than "no change", enough pairs.
+  const over = ev.limit_mae != null && o.mae_model != null && o.mae_model > ev.limit_mae;
+  const why = !over ? null
+    : ev.error_high ? "above the limit and worse than “no change”: alert"
+    : !enough ? "above the limit, but too few pairs to judge: no alert"
+    : "above the limit, but better than “no change”: no alert";
   fill(stats,
-    el("div", { class: "big-stat" + (ev.error_high ? " bad" : "") },
+    el("div", { class: "big-stat" + (ev.error_high ? " bad" : over ? " warn" : "") },
       el("span", {}, "Model error"), el("strong", {}, fmtMae(o.mae_model)),
-      el("em", {}, ev.limit_mae != null ? `alert above ${ev.limit_mae.toFixed(1)} (1.5 × test error ${ev.test_mae})` : "average miss")),
+      el("em", {}, ev.limit_mae != null ? `limit ${ev.limit_mae.toFixed(1)} (1.5 × test error ${ev.test_mae})` : "average miss"),
+      why ? el("em", { class: "why-line" }, why) : null),
     el("div", { class: "big-stat" }, el("span", {}, "“No change” error"), el("strong", {}, fmtMae(o.mae_no_change)), el("em", {}, "the baseline to beat")),
     el("div", { class: "big-stat" + (o.skill != null && o.skill < 0 ? " warn" : "") },
       el("span", {}, "Better than “no change”"), el("strong", {}, o.skill == null ? "—" : `${Math.round(o.skill * 100)}%`), el("em", {}, "lower error than the baseline")),
@@ -611,11 +619,12 @@ function renderEvaluation(d) {
       el("span", {}, "Forecast/actual pairs"), el("strong", {}, fmtNum(o.pairs || 0)),
       el("em", {}, enough ? `enough to judge (≥ ${ev.min_pairs})` : `under ${ev.min_pairs}: too few to alert`)));
   const H = { "1-6h": "1–6 hours ahead", "7-12h": "7–12 hours ahead", "13-24h": "13–24 hours ahead" };
+  const hName = (k) => H[k.replace(/\s+/g, "")] || k;  // the report writes "1-6 h"
   const rows = Object.entries(ev.by_horizon || {});
   fill(table,
     el("thead", {}, el("tr", {}, ["Forecast", "Model", "No change", "Pairs"].map((h) => el("th", { scope: "col" }, h)))),
     el("tbody", {}, ...rows.map(([k, s]) => el("tr", {},
-      el("td", {}, H[k] || k),
+      el("td", {}, hName(k)),
       el("td", { class: s.mae_model != null && s.mae_no_change != null && s.mae_model > s.mae_no_change ? "worse" : "" }, fmtMae(s.mae_model)),
       el("td", {}, fmtMae(s.mae_no_change)),
       el("td", {}, fmtNum(s.pairs || 0))))));
@@ -683,7 +692,9 @@ ${v.level} (${fmtNum(v.live_rows)} live values)` },
   }));
   fill(document.getElementById("drift-key"),
     el("span", {}, el("i", { class: "tick" }), `${dr.psi_moderate}: moderate change`),
-    el("span", {}, el("i", { class: "tick strong" }), `${dr.psi_drift}: drift (alert, may start a retrain)`));
+    el("span", {}, el("i", { class: "tick strong" }), dr.psi_drift === ALERT_PSI
+      ? `${dr.psi_drift}: drift (alert, may start a retrain)`
+      : `${dr.psi_drift}: drift (may start a retrain; the alert fires above ${ALERT_PSI})`));
 }
 
 function renderRetrain(d) {
@@ -749,6 +760,7 @@ async function refresh() {
     const d = await getJSON("/pipeline");
     page.data = d;
     showBanner("");
+    document.getElementById("console-tabs").hidden = false;
     document.getElementById("asof").textContent = `Updated ${fmtWhen(d.generated_at_utc)}`;
     renderSummary(d);
     renderWorkflows(d);
@@ -766,7 +778,10 @@ async function refresh() {
     renderGrafana(d);
   } catch (e) {
     showBanner(`Could not load the pipeline status: ${reason(e)}. Use Refresh to try again in a moment.`);
-    if (!page.data) document.getElementById("asof").textContent = "No status right now";
+    if (!page.data) {  // nothing loaded yet: show only the banner, not empty sections
+      document.getElementById("asof").textContent = "No status right now";
+      document.getElementById("console-tabs").hidden = true;
+    }
   }
 }
 

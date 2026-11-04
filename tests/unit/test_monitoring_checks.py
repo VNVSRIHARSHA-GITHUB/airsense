@@ -1,5 +1,6 @@
 """Forecast vs actual and drift (PSI) on made-up data (Stage 10)."""
 
+import json
 from datetime import UTC, datetime
 
 import numpy as np
@@ -134,3 +135,18 @@ def test_drift_report_levels_and_not_enough_data():
         "level": "not enough data",
         "live_rows": 19,
     }
+
+
+def test_limit_uses_the_champions_test_error(tmp_path):
+    from airsense.monitoring.evaluate import reference_test_mae
+
+    metrics = tmp_path / "train_metrics.json"
+    metrics.write_text(json.dumps({"test": {"model": {"mae": 9.9}}}))
+    # the champion (served model) wins over the latest, maybe unpromoted, run
+    assert reference_test_mae(lambda: (6.8, "1"), metrics) == (
+        6.8,
+        "champion version 1",
+    )
+    mae, source = reference_test_mae(lambda: None, metrics)  # registry unreadable
+    assert mae == 9.9 and source.startswith("latest training run")
+    assert reference_test_mae(lambda: None, tmp_path / "missing.json")[0] is None

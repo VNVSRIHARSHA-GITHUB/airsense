@@ -370,6 +370,7 @@ table.data tr.selected { background: color-mix(in srgb, var(--accent) 10%, trans
 .big-stat em { font-style: normal; font-size: 0.84rem; color: var(--muted); }
 .big-stat.warn strong { color: var(--warn); }
 .big-stat.bad strong { color: var(--bad); }
+.big-stat em.why-line { display: block; margin-top: 4px; color: var(--ink); }
 .slots-days, .slots, .slots-axis { display: grid; grid-template-columns: repeat(48, minmax(0, 1fr)); gap: 2px; }
 .slots-days span { font-size: 0.78rem; font-weight: 700; color: var(--muted); border-left: 2px solid var(--line-strong); padding-left: 3px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; }
 .slots span { height: 34px; border-radius: 3px; background: var(--ok); transition: transform 0.1s; }

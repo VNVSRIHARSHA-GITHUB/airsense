@@ -154,13 +154,46 @@ This usually resolves itself when new data arrives (normally within an hour). A 
 
 The **Pipeline console** shows whether the system behind the forecasts is healthy. It reads only; it cannot start or change anything. It updates every minute. The scheduler (Airflow, at http://localhost:8081) runs the pipeline; the console shows what it did.
 
-At the top, four **summary cards**, each with a status word (**OK**, **Needs attention**, **Problem**) as well as a colour. Clicking a card opens its tab below. A small number on a tab (for example on **Live data**) counts the things to look at there.
+At the top, five **summary cards**, each with a status word (**OK**, **Needs attention**, **Problem**) as well as a colour. Clicking a card opens its tab below. A small number on a tab (for example on **Live data**) counts the things to look at there.
 
 | Tab (and card) | What it answers | What to do when it is not OK |
 |---|---|---|
-| **Workflows** (Scheduled workflows) | Did the three automatic workflows run, and did they succeed? *airsense_live* (every 30 min: collect, process, refresh live data), *airsense_retrain* (Sundays: retrain and serve a better model), *airsense_housekeeping* (daily: back up data, clean up). Each row shows the latest run, the **next run**, how long the run **took**, and the result. Below: **Recent warnings and errors** written by the collector. | **Failed**: open it in Airflow ("Open in Airflow"), click the red box, read *Logs*. **Overdue** ("No run for a while"): Airflow is not running (start it with `bash airflow/start.sh` and keep that terminal open) or the computer was asleep. Occasional collector warnings are normal (retries succeed); repeated errors need attention. |
-| **Pipeline** (Pipeline steps) | All 14 steps and which step feeds which. Green = up to date, amber = inputs changed (needs a re-run), grey = runs on every pipeline run. Select a step (in the graph or the **All steps** table) to see its command, latest report and the reason it changed. **Processing speed**: rows per second of each data step in its latest run. On a phone the graph is hidden and the table is the list of steps. | "*n* need a re-run": normally fixed by the next scheduled run; to run now, Trigger the workflow in Airflow. A large drop in processing speed compared with earlier runs points to a problem. |
+| **Workflows** (Scheduled workflows) | Did the four automatic workflows run, and did they succeed? *airsense_live* (every 30 min: collect, process, refresh live data), *airsense_monitor* (hourly: check the forecasts against what was measured, check for drift, start a retrain if needed), *airsense_retrain* (Sundays, or when the monitor starts it: retrain and serve a better model), *airsense_housekeeping* (daily: back up data, clean up). **Source empty** (amber) means the CPCB feed had no data at that moment: a gap at the source, not a fault in AirSense. Each row shows the latest run, the **next run**, how long the run **took**, and the result. Below: **Recent warnings and errors** written by the collector. | **Failed**: open it in Airflow ("Open in Airflow"), click the red box, read *Logs*. **Overdue** ("No run for a while"): Airflow is not running (start it with `bash airflow/start.sh` and keep that terminal open) or the computer was asleep. Occasional collector warnings are normal (retries succeed); repeated errors need attention. |
+| **Pipeline** (Pipeline steps) | All 15 steps and which step feeds which. Green = up to date, amber = inputs changed (needs a re-run), grey = runs on every pipeline run, or (*build_training_live*) new live data that the next retrain will use. Select a step (in the graph or the **All steps** table) to see its command, latest report and the reason it changed. **Processing speed**: rows per second of each data step in its latest run. On a phone the graph is hidden and the table is the list of steps. | "*n* need a re-run": normally fixed by the next scheduled run; to run now, Trigger the workflow in Airflow. A large drop in processing speed compared with earlier runs points to a problem. |
 | **Live data** (Live data collection) | Are new measurements arriving every 30 minutes? Four figures (collected in the last 24 hours, number of gaps, last snapshot, all snapshots), then one box per half-hour: green = collected, pink = missing, outlined = not due yet. Hover over a box for its time. Gaps are listed with their times; a gap that is still going on says *still missing*. | Check that the computer was on and connected and that Airflow is running; check the collector log. |
 | **Model** (Live model) | Which model version serves forecasts, how accurate it was on test data (compared with "no change", i.e. assuming the 24-hour average stays as it is), and the **quality gate**: the 5 automatic checks it passed before it was allowed to serve, in plain words, with a bar showing value against limit where it applies. | A failed check means a new model was not promoted; see the gate report. |
+| **Monitoring** (Monitoring) | Is anything wrong right now, and is the model still good? **Alerts** firing now (critical first, each with what to check) and *Recently resolved* ones with how long they lasted; **Forecasts vs what happened**: the average miss of the model and of "no change" over the last 3 days, per day and by how far ahead; **drift**: whether today's inputs (PM2.5, weather) still look like the training data; **automatic retraining**: the latest decision and why, when one was last started and when the next is possible; four live panels from Grafana (on the laptop only) and links to Grafana, Prometheus and Alertmanager. | Follow the alert's description; the table below says what each alert means. A high forecast error or drift starts a retrain by itself (at most every 3 days); the new model serves only if it passes the gate and beats the current one. |
 
-Technical details of the service (API, error handling, configuration) are in `docs/lld.md`.
+![Monitoring tab](images/manual_monitoring.png)
+
+### 8.1 When an alert fires
+
+Alerts appear on the Monitoring tab about 2–3 minutes after a problem starts (short
+blips never become alerts) and move to *Recently resolved* within about 5 minutes after
+it ends.
+
+| Alert | Meaning | What to do |
+|---|---|---|
+| The AirSense backend is not answering (critical) | the web pages cannot show forecasts or this console | `docker compose ps`; `docker compose logs backend --tail 80`; `docker compose start backend` |
+| The model server is down (critical) | no forecasts can be made; city values still show | `docker compose logs model-server --tail 80`; `docker compose start model-server` |
+| The live data store (Redis) cannot be read (critical) | forecasts and the city list fail | `docker compose ps redis`; `docker compose start redis` |
+| The served model is not the registry's champion | a better model was registered but is not being served | `docker compose restart model-server backend` (the retrain workflow normally does this) |
+| More than 5 % of API requests fail / Forecasts are slow | a dependency is struggling or the laptop is overloaded | check the other alerts and `docker compose logs backend`; close heavy programs |
+| No city has data newer than 4 hours | no forecasts can be made | check that Airflow runs and the live workflow succeeds |
+| The collector has not run for over 75 minutes | Airflow stopped or the laptop was asleep | start Airflow with `bash airflow/start.sh` and keep that terminal open |
+| The CPCB feed has returned no data for over an hour | a gap at the source | nothing to fix; collection resumes when CPCB publishes again |
+| The collector fails | network or API error for over 35 minutes | see `logs/collector.log` and the live workflow in Airflow; check the internet connection |
+| Forecasts are much worse than expected | over 3 days the error is above 1.5 × the test error and worse than "no change" | a retrain is started automatically; see the Model tab for its result |
+| Live inputs differ from the training data | drift above 0.3 for at least one input | as above; the drift bars show which input changed |
+
+### 8.2 If a retrain step fails after its work is done
+
+If a step of *airsense_retrain* (for example *train*) fails at the very end although its
+work finished (its log shows the results), it can be recovered without running it
+again: `dvc commit -f train` in the project folder, then in Airflow mark the task as
+*Success* (✓ / ✗ button, without "Downstream") and *Clear* the next task with
+"Downstream" ticked. The retrain steps log in full, so the reason is at the end of the
+step's log.
+
+Technical details of the service (API, error handling, monitoring, configuration) are
+in `docs/lld.md`; how monitoring works in `docs/architecture.md` §6.

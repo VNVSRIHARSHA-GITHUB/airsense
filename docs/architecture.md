@@ -6,7 +6,7 @@ whole: its parts, how data moves through them, how they are deployed, and how to
 and operate it. The details of the serving code (API contract, request flow, model
 input contract) are in `docs/lld.md`; data sources and features in
 `docs/data_sources.md` and `docs/features.md`; how to use the web pages in
-`docs/user_manual.md`.
+`docs/user_manual.md`. Monitoring (Stage 10) is in §6.
 
 ---
 
@@ -14,21 +14,25 @@ input contract) are in `docs/lld.md`; data sources and features in
 
 ![AirSense architecture](images/architecture.png)
 
-The diagram source (Mermaid) is in §9; `docs/images/architecture.png` is rendered
+The diagram source (Mermaid) is in §10; `docs/images/architecture.png` is rendered
 from it.
 
-The system has two halves that meet only through files and stores:
+The system has two halves that meet only through files and stores, and a monitoring
+layer that watches both:
 
 | Half | Runs | What it does | Output |
 |---|---|---|---|
-| **Pipeline** (offline) | on the laptop, in the project's Python environment; **Airflow** schedules it (three workflows), **DVC** decides what actually needs re-running | collects live measurements, validates and processes data, builds features, trains, checks and registers the model, builds the guidance index | data and feature files, the registered **champion** model, the online features (Redis), the guidance collection (Qdrant) |
+| **Pipeline** (offline) | on the laptop, in the project's Python environment; **Airflow** schedules it (four workflows), **DVC** decides what actually needs re-running | collects live measurements, validates and processes data, builds features, trains, checks and registers the model, builds the guidance index | data and feature files, the registered **champion** model, the online features (Redis), the guidance collection (Qdrant) |
 | **Serving** (online) | five Docker containers | answers users: the latest values, a 24-hour forecast, why, and what to do | the web pages and the REST API |
+| **Monitoring** | three Docker containers (Prometheus, Alertmanager, Grafana) and the hourly `airsense_monitor` workflow | measures the service, the live data and the model; compares every forecast with what was measured; checks the inputs for drift; raises alerts; starts a retrain when the model needs one | metrics, alerts, dashboards, and the Monitoring tab of the Pipeline console |
 
 The serving system never trains or rewrites data; the pipeline never answers users.
 A new model or new features reach users without changing serving code. Since Stage 9
 nothing has to be started by hand: Airflow collects every 30 minutes, refreshes the
 live features, retrains weekly and serves a new champion, and versions the data daily
-(§5).
+(§5). Since Stage 10 the system also checks itself: it raises alerts when a part
+fails or the data stops, and retrains on its own when the forecasts get worse or the
+inputs drift (§6).
 
 ---
 
@@ -44,11 +48,16 @@ live features, retrains weekly and serves a new champion, and versions the data 
 | Quality gate | Python | Five checks against baselines before a model may serve |
 | Registry | MLflow Model Registry | Versions; the `champion` alias marks the model that serves |
 | Guidance index | sentence-transformers, **Qdrant** | Health advice per AQI category and user group, found by semantic search |
-| Pipeline control | **DVC** (`dvc.yaml`, 14 stages) | Runs only what changed; versions data and models by checksum; live snapshots versioned daily (`dvc add` + `dvc push`) |
-| Orchestration | **Apache Airflow 3.3** (own environment, `airflow standalone`) | Schedules the pipeline as three workflows (DAGs), with retries, logs and a web UI on port 8081 |
+| Pipeline control | **DVC** (`dvc.yaml`, 15 stages) | Runs only what changed; versions data and models by checksum; live snapshots and saved forecasts versioned daily (`dvc add` + `dvc push`) |
+| Orchestration | **Apache Airflow 3.3** (own environment, `airflow standalone`) | Schedules the pipeline as four workflows (DAGs), with retries, logs and a web UI on port 8081 |
 | Model server | `mlflow models serve` | Serves the champion over REST (`/invocations`) |
 | Backend | FastAPI | The application: freshness check, weather, model input, AQI, explanation (SHAP), guidance, pipeline status |
 | Frontend | HTML, CSS, JavaScript, Chart.js, nginx | Forecast page for the public, Pipeline console for operators |
+| Metrics | `prometheus-client` in the backend (`GET /metrics`) | Requests, errors and response times; dependency health, data age, collector state; forecast error, drift (read from the monitor's reports) |
+| Prometheus | **Prometheus 3.5** | Reads `/metrics` every 30 s, keeps 15 days, evaluates 12 alert rules |
+| Alertmanager | **Alertmanager 0.28** | Groups and forwards alerts to the backend (`POST /alerts`), which keeps them for the console |
+| Dashboards | **Grafana 12** | Two dashboards (service; data and model), provisioned from files; four panels embedded in the console |
+| Model monitoring | Python, `airsense_monitor` workflow | Saves every served forecast, compares it 24 h later with the measurement and with "no change", checks drift (PSI) daily, decides on an automatic retrain |
 
 ---
 
@@ -64,8 +73,11 @@ live features, retrains weekly and serves a new champion, and versions the data 
    checked city-hourly tables in `data/processed/`.
 3. `fetch_weather` → `validate_weather` → `build_features_history` /
    `build_features_live`: feature tables in `data/features/`.
-4. `build_training` → `train` → `gate` → `register`: the model in MLflow; if it passes
-   the gate and beats the current champion, it becomes the new champion.
+4. `build_training` (history) and `build_training_live` (the hours collected live,
+   built with the same code) → `train` → `gate` → `register`: the model in MLflow; if
+   it passes the gate and beats the current champion, it becomes the new champion.
+   Live rows only join the training rows (with extra weight); validation and test stay
+   the same 2022 periods, so models are always compared on the same data.
 5. `feast_online` writes the newest features of each city to **Redis** (every 30
    minutes, by `airsense_live`); `guidance_index` embeds the advice texts into
    **Qdrant**.
@@ -83,6 +95,18 @@ live features, retrains weekly and serves a new champion, and versions the data 
    the matching advice in Qdrant.
 5. One JSON answer goes back to the page, which draws it.
 
+**Monitoring, every hour (`airsense_monitor`, details in §6):**
+
+1. Save every city's forecast as the backend serves it (`data/monitoring/forecasts/`).
+2. Compare the saved forecasts whose hour has passed with the measured values, for the
+   model and for "no change" (`evaluation.json`).
+3. Once a day (22:50 IST), compare the last 7 days of live inputs with the training
+   data of the same months (`drift.json`).
+4. Decide whether to retrain (`retrain_decision.json`) and, if so, start
+   `airsense_retrain`.
+5. The backend turns these reports into metrics; Prometheus reads them with the
+   service metrics and raises alerts.
+
 ---
 
 ## 4. Deployment
@@ -92,7 +116,7 @@ Laptop (Ubuntu, CPU only)
 │
 ├── Project folder ~/projects/airsense  (Git + DVC)
 │     pipeline code, data, mlruns/ + mlflow.db (models), feature_repo/ (Feast),
-│     airflow/dags/ (the three workflows)
+│     airflow/dags/ (the four workflows)
 │     └── Python environment (.venv): DVC pipeline, collector, tests
 │
 ├── Airflow 3.3  (own environment ~/airflow-venv; files in ~/airflow-airsense)
@@ -105,6 +129,9 @@ Laptop (Ubuntu, CPU only)
       model-server  MLflow             internal only
       redis         Feast online store 127.0.0.1:6379 (filled by the pipeline)
       qdrant        guidance index     127.0.0.1:6333 (filled by the pipeline)
+      prometheus    metrics, alerts    127.0.0.1:9090
+      alertmanager  alert routing      127.0.0.1:9093
+      grafana       dashboards         127.0.0.1:3000
 ```
 
 | Container | Image | Memory limit | Health check |
@@ -114,6 +141,9 @@ Laptop (Ubuntu, CPU only)
 | model-server | `airsense-app:<commit>` (same image, other command) | 1.5 GB | `GET /ping` |
 | redis | `redis:7.4.2-alpine` | 256 MB | `redis-cli ping` |
 | qdrant | `qdrant/qdrant:v1.19.0` | 512 MB | port 6333 open |
+| prometheus | `prom/prometheus:v3.5.0` | 256 MB | `/-/healthy` |
+| alertmanager | `prom/alertmanager:v0.28.1` | 64 MB | `/-/healthy` |
+| grafana | `grafana/grafana:12.0.0` | 256 MB | `/api/health` |
 
 **Design decisions**
 
@@ -129,13 +159,18 @@ Laptop (Ubuntu, CPU only)
   **read-only** into both application containers, at the **same absolute path** as on
   the laptop, because the MLflow database and the Feast registry store absolute paths.
   A newly registered champion is served after a restart; no image rebuild. The
-  backend can write to two folders only: DVC's scratch folder (for `dvc status` on the
-  console) and the saved weather forecasts. Models are loaded from a temporary copy
+  backend writes only to the saved weather forecasts and the received alerts
+  (`logs/alerts/`). For `dvc status` (console) it has its **own** DVC scratch folder in
+  memory (`tmpfs`), not the laptop's `.dvc/tmp`: inside a container the laptop's
+  process IDs do not exist, so a shared one let the console's `dvc status` remove the
+  lock of a running `dvc repro` as if that process had died. Models are loaded from a temporary copy
   inside the container, since MLflow writes a small file next to a model it loads.
 - **Only the frontend is public.** nginx serves the pages and forwards `/api/` to the
-  backend, so the browser talks to one address. The model server has no published
-  port; Redis and Qdrant are reachable from the laptop only, so the pipeline can fill
-  them.
+  backend, so the browser talks to one address; it does not forward `/api/metrics` or
+  `/api/alerts` (internal). The model server has no published port; Redis and Qdrant
+  are reachable from the laptop only, so the pipeline can fill them. Prometheus,
+  Alertmanager and Grafana are local to the laptop too; Grafana viewers need no login
+  (read-only), its admin password is in `.env`.
 - **The pipeline stays outside the containers.** It needs Spark, the full data and the
   laptop's environment. Airflow (Stage 9) schedules it from its own environment:
   Airflow's pinned packages (FastAPI, pydantic, alembic, grpcio, …) differ from the
@@ -150,7 +185,7 @@ Laptop (Ubuntu, CPU only)
 
 ## 5. Scheduled workflows (Airflow)
 
-Three DAGs in `airflow/dags/`. Every pipeline step is one task running
+Four DAGs in `airflow/dags/`. Every pipeline step is one task running
 `dvc repro -s <stage>` in the project folder with `.venv` activated: DVC still decides
 whether anything changed and keeps `dvc.lock` correct; Airflow adds the schedule, the
 order, retries, logs and the graph. All DVC tasks share a pool with **one slot**,
@@ -159,20 +194,79 @@ because DVC locks the repository (two DVC commands at once would fail).
 | Workflow | Schedule | Tasks | Notes |
 |---|---|---|---|
 | `airsense_live` | every 30 min, at :05 and :35 | `collect` → `process_live` → `validate_processed` → `build_features_live` → `feast_online` | replaced the collector's cron job; `validate_processed` is a gate: bad data never reaches Redis; `feast_online` checks online = offline features |
-| `airsense_retrain` | Sundays 13:00 IST, or started manually | `champion_before` → `build_training` → `train` → `gate` → `register` → `champion_changed` → `restart_serving` | unchanged data: every step is skipped by DVC in seconds; a failed gate stops the run and the champion keeps serving; the containers are restarted only if the champion changed, then `/health` must report the new version |
-| `airsense_housekeeping` | daily at 23:15 IST | `version_live_data` → `push_data` → `commit_checkpoint` → `gc_dvc_cache`; `clean_airflow_logs`, `prune_old_images` | live snapshots (CPCB feed, Open-Meteo forecasts) cannot be downloaded again: `dvc add` + `dvc push` daily; one Git commit per day ("Daily data checkpoint"), only for data versions and reports; `dvc gc` drops the 30-minute intermediates |
+| `airsense_retrain` | Sundays 13:00 IST, started manually, or started by `airsense_monitor` | `champion_before` → `build_training` → `build_training_live` → `train` → `gate` → `register` → `champion_changed` → `restart_serving` | about 5 min with new live data; a failed gate stops the run and the champion keeps serving; the containers are restarted only if the champion changed, then `/health` must report the new version; its DVC steps log in full (`-v`) |
+| `airsense_monitor` | every hour at :50 | `record_forecasts` → `evaluate` → (`drift_due` → `check_drift`) → `decide_retrain` → `trigger_retrain` | the drift check runs at 22:50 IST and in manual runs; a retrain is started when the error is high or there is drift, at most every 3 days (§6) |
+| `airsense_housekeeping` | daily at 23:15 IST | `version_live_data` → `push_data` → `commit_checkpoint` → `gc_dvc_cache`; `clean_airflow_logs`, `prune_old_images` | live snapshots (CPCB feed, Open-Meteo forecasts) and the saved forecasts cannot be downloaded again: `dvc add` + `dvc push` daily; one Git commit per day ("Daily data checkpoint"), only for data versions and reports; `dvc gc` drops the 30-minute intermediates |
 
 - **Missed runs are not replayed** (`catchup=False`): the feed only has the current
   hour, so a replay would fetch "now" several times. One run at a time per workflow.
 - **Failures:** each task retries (training does not: it is memory-heavy); a failed run
-  is red in Airflow and on the Pipeline console.
+  is red in Airflow and on the Pipeline console. A collector run that finds the CPCB
+  feed empty ends as "skipped" (exit code 99), shown as "Source empty", not as a
+  failure: it is a gap at the source, not in AirSense.
 - **Pipeline console:** when a run ends, the DAG writes its result to
   `logs/airflow_runs.json`; the console shows each workflow's latest run with a link to
   Airflow. No Airflow login or network access is needed by the backend.
 
 ---
 
-## 6. Behaviour when a part fails
+## 6. Monitoring (Stage 10)
+
+**What is measured** (backend `GET /metrics`, read by Prometheus every 30 s):
+
+| Area | Metrics | From |
+|---|---|---|
+| Service | requests and response time per endpoint and status; forecasts made / unavailable / failed; model-server call time | counted as requests happen |
+| Dependencies | model server, live data store (Redis), served model = registry champion | the backend's health check, on each read |
+| Live data | age of the newest value per city, cities with data, snapshots in 24 h, minutes since the last one, collector's last result | data files and `logs/collector_status.json` |
+| Model | forecast error of the model and of "no change" (3 days), skill, pairs, error by hours ahead, "error high"; PSI and level per input | the monitor's reports |
+
+**Model monitoring** (`airsense_monitor`, hourly):
+
+- *Forecast vs actual:* every served forecast is saved; once its hour has passed it is
+  compared with the measured 24-hour average. A forecast saved by several runs counts
+  once. Over 3 days: the error is **high** when it is above 1.5 × the test error,
+  worse than "no change", and based on at least 100 pairs.
+- *Drift:* the Population Stability Index (10 bins at the training deciles) of six
+  inputs (PM2.5 level and change, temperature, humidity, wind, rain), last 7 days of
+  live data against training rows of the **same months** (October–November): every
+  season differs from the yearly average. PSI 0.2–0.3 is moderate, above 0.3 drift;
+  fewer than 200 live values: "not enough data".
+- *Automatic retrain:* when the error is high or there is drift (report at most 26 h
+  old) and `monitoring.auto_retrain` is on, `airsense_retrain` is started, at most
+  every 3 days. The quality gate and the champion rule still decide whether the new
+  model serves.
+
+**Alerts** (`docker/monitoring/alert_rules.yml`, tested with `promtool`):
+
+| Alert | When | Severity |
+|---|---|---|
+| BackendDown | Prometheus cannot read `/metrics` for 2 min | critical |
+| ModelServerDown, LiveDataStoreDown | dependency down for 2 min | critical |
+| ServedModelNotChampion | a new champion not served for 30 min | warning |
+| HighErrorRate | > 5 % server errors for 5 min | warning |
+| SlowForecasts | p95 forecast time > 2 s for 10 min, with ≥ 10 forecasts | warning |
+| LiveDataStale | no city has data newer than 4 h, for 15 min | warning |
+| CollectorNotRunning | no collector run for 75 min | warning |
+| CPCBFeedEmpty | the feed has been empty for over an hour | warning |
+| CollectorErrors | the collector failing for 35 min | warning |
+| ForecastErrorHigh | the monitor's "error high" | warning |
+| DataDrift | largest PSI > 0.3 | warning |
+
+A down model server or Redis suppresses the error-rate and slow-forecast alerts (they
+would only repeat it). Alertmanager waits 30 s before the first message and sends an
+update per alert at most every 5 minutes, so a resolved alert reaches the console up
+to 5 minutes after it ended: detection is fast, notification is calm, so a flickering
+part gives one message, not dozens.
+
+**Where to look:** the console's Monitoring tab (alerts, forecast error, drift,
+retrain decisions, four Grafana panels); Grafana (http://localhost:3000) for the full
+dashboards; Prometheus (http://localhost:9090/alerts) for the rules' state;
+Alertmanager (http://localhost:9093). All three are local to the laptop.
+
+---
+
+## 7. Behaviour when a part fails
 
 Tested by stopping or crashing each part while the pages were open:
 
@@ -185,9 +279,18 @@ Tested by stopping or crashing each part while the pages were open:
 | Backend stopped | red bar at once: the service is not running or not answering; nginx keeps serving the pages | after `docker compose start backend` |
 | Whole system (`down` / `up`) | — | features and guidance survive in Docker volumes; no pipeline run needed |
 
+Monitoring, tested on the laptop on 4–5 Nov 2026 (times IST):
+
+| Test | Alert | Fired | Resolved | What the console showed |
+|---|---|---|---|---|
+| Model server stopped | ModelServerDown | 23:43 | 23:46 (3 min) | Monitoring card red, critical alert with what to check; forecast page "Model server unavailable"; Grafana dependency DOWN |
+| Airflow not running (laptop asleep) | CollectorNotRunning | 23:27 (75 min + 5 min after the last run, as the rule says) | 23:45, at the next live run | "Airflow may be stopped" on the Workflows card |
+| Backend stopped | BackendDown | 23:54 | 23:56 (2 min) | the console's red banner while it was down (it needs the backend); Alertmanager held the alert and the console listed it as resolved afterwards |
+| Drift limit lowered to 0.25 for the test | — (decision, not alert) | 00:05 | — | "Retrain started: data drift in temperature_2m"; `airsense_retrain` started by the monitor (run type "operator triggered"), green in 3 min; v1 kept by the champion rule; next possible after the 3-day cooldown |
+
 ---
 
-## 7. Running it
+## 8. Running it
 
 Prerequisites: Docker with the Compose plugin; the project folder with the pipeline
 run at least once (`dvc repro`), so a champion model exists. Run every command from
@@ -197,13 +300,16 @@ the project root.
 
 ```bash
 AIRSENSE_TAG=$(git rev-parse --short HEAD) docker compose up -d --build
-docker compose ps                      # wait until all five are "healthy" (≈ 1 min)
+docker compose ps                      # wait until all eight are running / healthy (≈ 1 min)
 dvc repro feast_online                 # newest features into Redis
 dvc repro -f guidance_index            # first start only: advice into Qdrant
 ```
 
 Open http://localhost:8080 (forecast) and http://localhost:8080/pipeline.html
-(console); API documentation at http://127.0.0.1:8000/docs.
+(console); API documentation at http://127.0.0.1:8000/docs; Grafana at
+http://localhost:3000, Prometheus at http://localhost:9090, Alertmanager at
+http://localhost:9093. Before the first start: `mkdir -p logs/alerts`, and set
+`GRAFANA_ADMIN_PASSWORD` in `.env` (see `.env.example`).
 
 **Start the scheduler** (its own terminal). Airflow is installed once, in its own
 environment outside the project:
@@ -239,10 +345,16 @@ changed. To start the images that already exist without building, give their tag
 | Serve a champion registered outside Airflow | `docker compose restart model-server backend` |
 | Back up the live data | automatic daily (`airsense_housekeeping`); by hand: `dvc add data/raw/live/datagov data/raw/live/openmeteo && dvc push` |
 | Run any Airflow command | `bash airflow/cli.sh <command>`, e.g. `dags list`, `dags trigger airsense_live` |
+| Alerts now | console Monitoring tab, or http://localhost:9090/alerts |
+| Test the alert rules | `docker run --rm -v "$PWD":/w -w /w --entrypoint promtool prom/prometheus:v3.5.0 test rules tests/monitoring/alert_rules_test.yml` |
+| After changing a container's mounts | `docker compose rm -s -f <service> && docker compose up -d <service>` (a plain `up -d` can keep the old mount); check with `docker inspect <container>` |
 | Stop everything (data kept) | `docker compose down` |
 | Remove old image versions | `KEEP=$(git rev-parse --short HEAD); docker images --format '{{.Repository}}:{{.Tag}}' \| grep -E '^airsense-(app\|frontend):' \| grep -v ":$KEEP$" \| xargs -r docker rmi` |
 
-Run on the laptop without Docker (development): see `docs/lld.md` §7.
+Run on the laptop without Docker (development): see `docs/lld.md` §8. A retrain step
+that failed after the work was done (for example DVC could not record it) can be
+recovered without repeating it: `dvc commit -f <stage>`, mark the task as success in
+Airflow, then clear the next task with "Downstream".
 
 **Notes**
 
@@ -255,7 +367,7 @@ Run on the laptop without Docker (development): see `docs/lld.md` §7.
 
 ---
 
-## 8. Known limitations
+## 9. Known limitations
 
 - **Collection only while the laptop is on.** The live feed gives only the current
   hour, so hours when the laptop was off or offline are missing for good. Forecasts
@@ -266,10 +378,16 @@ Run on the laptop without Docker (development): see `docs/lld.md` §7.
   machine, as here; a server would run its components separately on PostgreSQL.
 - **Single machine.** All services run on one laptop; no replication or load balancing.
   The containers make moving to a server a configuration change, not a rewrite.
+- **Alerts go to the console only.** Alertmanager sends them to the backend; e-mail or
+  chat notifications would be one more receiver in `alertmanager.yml`. Grafana and
+  Prometheus are visible only on the laptop.
+- **Live data in training is still small.** About two weeks with gaps (the laptop was
+  off at times), so the live rows carry only a few per cent of the training weight; the
+  retrained models have not yet beaten the champion by the required 1 %.
 
 ---
 
-## 9. Diagram source
+## 10. Diagram source
 
 ```mermaid
 flowchart LR
@@ -287,6 +405,7 @@ flowchart LR
         TRAIN["Training<br/>LightGBM + MLflow"]
         GATE["Quality gate<br/>+ registry"]
         GIDX["Guidance index<br/>embeddings"]
+        MON["Monitor<br/>forecast vs actual, drift"]
         COL --> VAL --> PROC --> FEAT --> TRAIN --> GATE
     end
 
@@ -304,10 +423,23 @@ flowchart LR
         BE -- "24 input rows" --> MS
     end
 
+    subgraph monitoring ["Monitoring · Docker Compose"]
+        PR["Prometheus<br/>12 alert rules"]
+        AM["Alertmanager"]
+        GR["Grafana<br/>2 dashboards"]
+        PR --> AM
+        PR --> GR
+    end
+
     USER(["Browser<br/>public + operators"])
-    AF{{"Airflow<br/>3 workflows"}}
+    AF{{"Airflow<br/>4 workflows"}}
     AF -. "every 30 min / weekly / daily" .-> COL
+    AF -. "hourly" .-> MON
     AF -. "restart on new champion" .-> MS
+    BE -- "/metrics" --> PR
+    AM -- "alerts" --> BE
+    MON -- "reports" --> BE
+    MON -. "drift or high error: retrain" .-> TRAIN
 
     CPCB --> COL
     HIST --> PROC
