@@ -15,6 +15,7 @@ Inputs:
   PM2.5   data/features/pm_live (built by the live pipeline)
   weather data/raw/live/openmeteo snapshots, the hours already observed when
           fetched, turned into features by the same code as for training
+          (observed_weather, shared with build_training_live)
   reference data/training/h01.parquet (one horizon: one row per city and hour)
 
 Writes data/monitoring/reports/drift.json; `drift` is true when any input's PSI
@@ -30,7 +31,7 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from airsense.common.settings import PROJECT_ROOT, load_params
-from airsense.features.build_features import weather_features
+from airsense.features.build_training_live import observed_weather
 from airsense.monitoring.evaluate import write_json
 
 log = logging.getLogger(__name__)
@@ -88,22 +89,9 @@ def load_live(since: datetime, cfg_features: dict) -> pd.DataFrame:
     pm["city"] = pm["city"].astype(str)
     pm["time_utc"] = pd.to_datetime(pm["time_utc"], utc=True)
     pm = pm[pm["time_utc"] >= since]
-    frames = []
-    for f in sorted(WEATHER_SNAPSHOTS.glob("*/*.csv")):
-        raw = pd.read_csv(f)
-        raw["time_utc"] = pd.to_datetime(raw["time_utc"], utc=True)
-        fetched = pd.to_datetime(raw.pop("fetched_at_utc"), utc=True).iloc[0]
-        w = weather_features(raw, cfg_features)
-        w["time_utc"] = pd.to_datetime(w["time_utc"], utc=True)
-        frames.append(w[w["time_utc"] <= fetched].assign(fetched=fetched))  # observed
-    if not frames:
+    weather = observed_weather(WEATHER_SNAPSHOTS, cfg_features)
+    if weather.empty:
         return pm
-    weather = (
-        pd.concat(frames, ignore_index=True)
-        .sort_values("fetched")
-        .drop_duplicates(["city", "time_utc"], keep="last")
-        .drop(columns="fetched")
-    )
     weather = weather[weather["time_utc"] >= since]
     rw = cfg_features["rain_window_hours"]
     weather = weather.rename(columns={f"rain_{rw}h": "rain_24h"})

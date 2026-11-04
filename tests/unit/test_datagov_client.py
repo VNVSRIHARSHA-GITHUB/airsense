@@ -50,6 +50,8 @@ def test_status_keeps_the_last_good_time(collector, monkeypatch):
         dg, "fetch_all_records", lambda rid, key: [{"city": "Delhi"}] * 300
     )
     assert dg.main() == 0
+    # the snapshot went to the test folder, not to the project's live data
+    assert len(list((collector / "datagov").rglob("*.csv"))) == 1
     ok = json.loads((collector / "logs" / "collector_status.json").read_text())
     monkeypatch.setattr(dg, "fetch_all_records", lambda rid, key: [])
     dg.main()

@@ -3,6 +3,11 @@
 1. Load the training table (data/training/, built through Feast in Stage 3).
 2. Split by time: train / validation / test, with a gap at each boundary so
    no target window of one set overlaps another.
+2b. Live rows (data/training_live/, Stage 10): the hours collected since Oct 2026.
+   The newest `live_holdout_days` are kept aside ("recent live", reported only);
+   the rest join the TRAINING rows with a higher weight, so together they carry
+   `live_weight_share` of the total weight. They never enter validation or test,
+   so the gate keeps comparing models on the same historical periods.
 3. Baselines: persistence (the current value for every horizon) and "same hour
    yesterday" (the value at t + h - 24, already known at t).
 4. LightGBM: one model with the horizon as a feature, early stopping on the
@@ -42,6 +47,7 @@ log = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 TRAINING = PROJECT_ROOT / "data" / "training"
+TRAINING_LIVE = PROJECT_ROOT / "data" / "training_live"
 MODEL_FILE = PROJECT_ROOT / "models" / "lgbm_model.txt"
 REPORTS = PROJECT_ROOT / "reports" / "train"
 METRICS_FILE = PROJECT_ROOT / "data" / "interim" / "train_metrics.json"
@@ -85,6 +91,49 @@ def split_masks(df: pd.DataFrame, cfg: dict) -> dict[str, np.ndarray]:
         "val": ((t >= ts(cfg["val_start"])) & (tt < ts(cfg["val_end"]))).to_numpy(),
         "test": (t >= ts(cfg["test_start"])).to_numpy(),
     }
+
+
+def load_live(path: Path, columns: list[str]) -> pd.DataFrame | None:
+    """The live training rows with the history table's columns, or None if none."""
+    files = sorted(path.glob("h*.parquet")) if path.exists() else []
+    if not files:
+        return None
+    live = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+    if live.empty:
+        return None
+    missing = sorted(set(columns) - set(live.columns))
+    if missing:
+        raise ValueError(f"Live training rows lack columns: {missing}")
+    return live[columns]
+
+
+def live_split(
+    live: pd.DataFrame, holdout_days: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """(train, recent) masks for the live rows.
+
+    recent: forecast time after the cut (newest target minus holdout_days), so all
+    its targets are after the cut too; train: target at or before the cut. Rows
+    whose forecast is before the cut but target after it are left out, like the
+    gaps between the historical splits.
+    """
+    cut = live["target_time_utc"].max() - pd.Timedelta(holdout_days, unit="D")
+    return (
+        (live["target_time_utc"] <= cut).to_numpy(),
+        (live["time_utc"] > cut).to_numpy(),
+    )
+
+
+def live_weight(n_history: int, n_live: int, share: float, max_weight: float) -> float:
+    """Weight of one live row so live rows carry `share` of the total weight.
+
+    share = n_live * w / (n_history + n_live * w)  =>  w = share/(1-share) * n_history/n_live.
+    Capped at max_weight: with only a few days of live data, a huge weight would
+    make the model memorise those days.
+    """
+    if n_live == 0 or share <= 0:
+        return 1.0
+    return float(min(share / (1 - share) * n_history / n_live, max_weight))
 
 
 def category_codes(params: dict) -> dict[str, dict[str, int]]:
@@ -141,16 +190,25 @@ def to_level(pred, current, mode: str) -> np.ndarray:
 
 
 def feature_matrix(
-    df: pd.DataFrame, features: list[str], mask: np.ndarray
+    df: pd.DataFrame,
+    features: list[str],
+    mask: np.ndarray,
+    extra: pd.DataFrame | None = None,
 ) -> np.ndarray:
-    """Selected rows as one float32 array, filled column by column.
+    """Selected rows (plus all rows of `extra`) as one float32 array, filled column
+    by column.
 
     Going through df.loc[mask, features].to_numpy() would hold two extra copies
-    of the training rows at once; this holds one.
+    of the training rows at once, and np.concatenate with the live rows another;
+    this holds one.
     """
-    x = np.empty((int(mask.sum()), len(features)), dtype=np.float32, order="F")
+    n = int(mask.sum())
+    m = 0 if extra is None else len(extra)
+    x = np.empty((n + m, len(features)), dtype=np.float32, order="F")
     for j, c in enumerate(features):
-        x[:, j] = df[c].to_numpy()[mask]
+        x[:n, j] = df[c].to_numpy()[mask]
+        if m:
+            x[n:, j] = extra[c].to_numpy()
     return x
 
 
@@ -228,12 +286,14 @@ def git_info() -> dict:
         return {"git_commit": "unknown", "git_dirty": "unknown"}
 
 
-def training_data_md5() -> str:
-    """Fingerprint of data/training as recorded by DVC (dvc.lock)."""
+def training_data_md5(
+    stage: str = "build_training", path: str = "data/training"
+) -> str:
+    """Fingerprint of a training-data folder as recorded by DVC (dvc.lock)."""
     try:
         lock = yaml.safe_load((PROJECT_ROOT / "dvc.lock").read_text())
-        for out in lock["stages"]["build_training"]["outs"]:
-            if out["path"] == "data/training":
+        for out in lock["stages"][stage]["outs"]:
+            if out["path"] == path:
                 return out["md5"]
     except (OSError, KeyError, TypeError):
         pass
@@ -241,6 +301,22 @@ def training_data_md5() -> str:
 
 
 # ---------- plots ----------
+
+
+def signature_example(sample: pd.DataFrame) -> pd.DataFrame:
+    """Rows for the MLflow signature, weather columns as float64 ("double").
+
+    In the table, humidity and cloud cover are whole numbers (int16: Open-Meteo
+    reports them so) and the other weather columns float32. A signature declaring
+    "integer" makes the model server reject an hour with one empty value (a missing
+    value is not an integer), and the forecast fails. Weather is a measurement, so
+    "double" for all of it: empty values are then allowed, like for every other input.
+    """
+    out = sample.copy()
+    for c in out.columns:
+        if c.endswith(("_now", "_target")):
+            out[c] = out[c].astype(np.float64)
+    return out
 
 
 def plot_by_horizon(per_h: dict[str, dict], path: Path) -> None:
@@ -322,15 +398,37 @@ def main() -> int:
     if cfg["train_fraction"] < 1:  # optional subsample, to save memory and time
         rng = np.random.default_rng(cfg["lgbm"]["seed"])
         train_mask = train_mask & (rng.random(len(df)) < cfg["train_fraction"])
+
+    # Live rows: kept apart from df, so they can never fall into val or test
+    # (the test mask "from 2022-10-02" would otherwise include all of 2026).
+    mode = cfg["target_mode"]
+    live = load_live(
+        TRAINING_LIVE, [c for c in df.columns if c not in ("persistence", "yesterday")]
+    )
+    live_train, recent = None, None
+    if live is not None:
+        encode_categories(live, codes)
+        live_mask, recent_mask = live_split(live, cfg["live_holdout_days"])
+        recent = live.loc[recent_mask].reset_index(drop=True)
+        live_train = live.loc[live_mask].reset_index(drop=True)
+        live_label = training_label(live_train["target"], live_train["pm25_24h"], mode)
+        live_train = live_train.loc[~np.isnan(live_label)].reset_index(drop=True)
+        del live
+    n_live = 0 if live_train is None else len(live_train)
+
     rows = {
         "train": int(train_mask.sum()),
         **{k: int(masks[k].sum()) for k in ("val", "test")},
+        "live_train": n_live,
+        "live_recent": 0 if recent is None else len(recent),
     }
     log.info(
-        "Rows: train %d, val %d, test %d; %d features",
+        "Rows: train %d (+%d live), val %d, test %d, recent live %d; %d features",
         rows["train"],
+        rows["live_train"],
         rows["val"],
         rows["test"],
+        rows["live_recent"],
         len(features),
     )
 
@@ -339,20 +437,52 @@ def main() -> int:
     lgb_params = {**cfg["lgbm"]}
     categorical = list(codes)  # city, region
     parts = {k: df.loc[masks[k]].copy() for k in ("val", "test")}  # for evaluation
-    mode = cfg["target_mode"]
     label = training_label(df["target"], df["pm25_24h"], mode)
     train_mask = train_mask & ~np.isnan(label)  # "change" needs a current value
-    x = feature_matrix(df, features, train_mask)
+    n_hist = int(train_mask.sum())
+    w_live = live_weight(
+        n_hist, n_live, cfg["live_weight_share"], cfg["live_weight_max"]
+    )
+    x = feature_matrix(df, features, train_mask, extra=live_train)
     y = label[train_mask]
-    del df, label
+    if n_live:
+        y = np.concatenate(
+            [y, training_label(live_train["target"], live_train["pm25_24h"], mode)]
+        )
+    weight = None
+    if n_live:
+        weight = np.ones(len(y), dtype=np.float32)
+        weight[n_hist:] = w_live
+    live_info = {
+        "rows_train": n_live,
+        "rows_recent": rows["live_recent"],
+        "weight": round(w_live, 3) if n_live else None,
+        "weight_share": round(n_live * w_live / (n_hist + n_live * w_live), 4)
+        if n_live
+        else 0.0,
+        "holdout_days": cfg["live_holdout_days"],
+        "first_target_utc": str(live_train["target_time_utc"].min())
+        if n_live
+        else None,
+        "last_target_utc": str(live_train["target_time_utc"].max()) if n_live else None,
+    }
+    del df, label, live_train
     train_set = lgb.Dataset(
         x,
         label=y,
+        weight=weight,
         feature_name=features,
         categorical_feature=categorical,
         free_raw_data=True,
     ).construct()
-    del x, y
+    del x, y, weight
+    if n_live:
+        log.info(
+            "Live rows: %d with weight %.2f (%.1f%% of the total weight)",
+            n_live,
+            w_live,
+            100 * live_info["weight_share"],
+        )
     val_set = lgb.Dataset(
         feature_matrix(parts["val"], features, np.ones(len(parts["val"]), bool)),
         label=training_label(parts["val"]["target"], parts["val"]["pm25_24h"], mode),
@@ -414,6 +544,32 @@ def main() -> int:
             "max": float(np.nanmax(pred)),
         }
     test_part = parts["test"]
+
+    # Recent live data: the newest days, never trained on. Reported, not gated:
+    # a few days of one season are too few to decide on (the gate uses validation).
+    recent_live = None
+    if recent is not None and len(recent):
+        recent["model"] = to_level(
+            booster.predict(recent[features], num_iteration=booster.best_iteration),
+            recent["pm25_24h"],
+            mode,
+        )
+        s_model = score(recent["target"], recent["model"], recent["pm25_24h"])
+        if s_model["n"]:
+            recent_live = {
+                "from_utc": str(recent["time_utc"].min()),
+                "to_utc": str(recent["target_time_utc"].max()),
+                "model": s_model,
+                "persistence": score(
+                    recent["target"], recent["pm25_24h"], recent["pm25_24h"]
+                ),
+            }
+            log.info(
+                "Recent live data (%d rows): MAE model %.2f, no change %.2f",
+                s_model["n"],
+                s_model["mae"],
+                recent_live["persistence"].get("mae", float("nan")),
+            )
     elapsed = time.perf_counter() - start
 
     MODEL_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -438,6 +594,9 @@ def main() -> int:
             {
                 **git_info(),
                 "training_data_md5": training_data_md5(),
+                "training_live_md5": training_data_md5(
+                    "build_training_live", "data/training_live"
+                ),
                 "model_type": "LightGBM, one model with horizon as a feature",
                 "target_mode": mode,  # "change": add pm25_24h to the output
             }
@@ -453,6 +612,10 @@ def main() -> int:
                 "rows_train": rows["train"],
                 "rows_val": rows["val"],
                 "rows_test": rows["test"],
+                "rows_live_train": rows["live_train"],
+                "live_weight": live_info["weight"],
+                "live_weight_share": live_info["weight_share"],
+                "live_holdout_days": cfg["live_holdout_days"],
                 "train_fraction": cfg["train_fraction"],
                 "target_mode": mode,
                 "train_start": params["features"]["train_start"],
@@ -479,9 +642,14 @@ def main() -> int:
                     f"{split_name}_mae_city_{city.replace(' ', '_')}", s["mae"]
                 )
         mlflow.log_metric("train_seconds", train_s)
+        if recent_live:
+            for model_name in ("model", "persistence"):
+                for k, v in recent_live[model_name].items():
+                    if k != "n":
+                        mlflow.log_metric(f"recent_live_{model_name}_{k}", v)
         mlflow.log_artifacts(str(REPORTS), artifact_path="plots")
         mlflow.log_dict(codes, "category_codes.json")  # needed to call the model
-        x_example = sample.head(5)
+        x_example = signature_example(sample.head(5))
         mlflow.lightgbm.log_model(
             booster,
             name="model",
@@ -509,6 +677,8 @@ def main() -> int:
             m: {h: s.get("mae") for h, s in v.items()} for m, v in per_h["test"].items()
         },
         "shap_mean_abs": importance,
+        "live_training": live_info,
+        "recent_live": recent_live,
     }
     METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
     METRICS_FILE.write_text(json.dumps(summary, indent=2))

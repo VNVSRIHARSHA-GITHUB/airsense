@@ -114,3 +114,81 @@ def test_change_mode_learns_the_difference_and_adds_it_back():
     assert training_label(target, current, "level").tolist() == target
     with pytest.raises(ValueError):
         training_label(target, current, "ratio")
+
+
+# ---------- live rows (Stage 10) ----------
+
+
+def test_live_rows_are_appended_without_a_copy_of_the_history():
+    from airsense.training.train import feature_matrix
+
+    df = pd.DataFrame({"a": [1.0, 2.0, 3.0], "b": [10.0, 20.0, 30.0]})
+    live = pd.DataFrame({"b": [70.0], "a": [7.0]})
+    x = feature_matrix(df, ["a", "b"], np.array([True, False, True]), extra=live)
+    assert x.tolist() == [[1.0, 10.0], [3.0, 30.0], [7.0, 70.0]]
+
+
+def test_live_weight_gives_the_share_and_is_capped():
+    from airsense.training.train import live_weight
+
+    w = live_weight(n_history=900_000, n_live=10_000, share=0.1, max_weight=50)
+    assert w == pytest.approx(10.0)
+    assert 10_000 * w / (900_000 + 10_000 * w) == pytest.approx(0.1)
+    assert live_weight(900_000, 100, 0.1, max_weight=20) == 20  # few rows: capped
+    assert live_weight(900_000, 0, 0.1, 20) == 1.0
+    assert live_weight(900_000, 100, 0.0, 20) == 1.0
+
+
+def test_live_split_keeps_the_newest_days_apart_with_a_gap():
+    from airsense.training.train import live_split
+
+    live = rows("2026-10-20 00:30", "2026-11-03 00:30")  # horizons 1 and 24
+    train, recent = live_split(live, holdout_days=2)
+    cut = live["target_time_utc"].max() - pd.Timedelta(2, unit="D")
+    assert (live.loc[train, "target_time_utc"] <= cut).all()
+    assert (live.loc[recent, "time_utc"] > cut).all()
+    assert not (train & recent).any()
+    # forecasts made before the cut with their target after it: in neither set
+    left_out = live[~train & ~recent]
+    assert len(left_out)
+    assert (left_out["time_utc"] <= cut).all()
+    assert (left_out["target_time_utc"] > cut).all()
+
+
+def test_live_rows_never_reach_validation_or_test(tmp_path):
+    from airsense.training.train import load_live
+
+    assert load_live(tmp_path / "missing", ["a"]) is None
+    (tmp_path / "live").mkdir()
+    part = rows("2026-10-20 00:30", "2026-10-21 00:30").assign(extra=1.0)
+    part.to_parquet(tmp_path / "live" / "h01.parquet")
+    live = load_live(
+        tmp_path / "live", ["city", "time_utc", "horizon", "target_time_utc"]
+    )
+    assert list(live.columns) == ["city", "time_utc", "horizon", "target_time_utc"]
+    with pytest.raises(ValueError):
+        load_live(tmp_path / "live", ["city", "pm25_24h"])
+    # train.py keeps them in their own table; split_masks on the history alone
+    # would put 2026 rows into "test" (from 2022-10-02), which is why they are apart
+    assert split_masks(live, SPLIT)["test"].all()
+
+
+def test_signature_example_makes_weather_columns_double():
+    from airsense.training.train import signature_example
+
+    x = pd.DataFrame(
+        {
+            "temperature_2m_now": np.array([20.5], np.float32),
+            "cloud_cover_target": np.array(
+                [40], np.int16
+            ),  # whole numbers in the table
+            "pm25_24h": np.array([100.0], np.float32),
+            "horizon": np.array([3], np.int16),
+        }
+    )
+    out = signature_example(x)
+    assert out["temperature_2m_now"].dtype == np.float64
+    assert out["cloud_cover_target"].dtype == np.float64
+    assert out["pm25_24h"].dtype == np.float32
+    assert out["horizon"].dtype == np.int16
+    assert x["temperature_2m_now"].dtype == np.float32  # input unchanged

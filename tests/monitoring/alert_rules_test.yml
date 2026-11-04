@@ -41,6 +41,30 @@ tests:
               summary: "More than 5% of API requests fail"
               description: "10% of requests answered with a server error over the last 5 minutes."
 
+  # Slow forecasts: 1 request per 5 min (too little traffic) -> nothing; 3 per minute,
+  # all slower than 2 s -> SlowForecasts after 10 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'airsense_http_request_duration_seconds_bucket{endpoint="/forecast/{city}", le="2.5"}'
+        values: '0x15 0x30'
+      - series: 'airsense_http_request_duration_seconds_bucket{endpoint="/forecast/{city}", le="5"}'
+        values: '0+0.2x15 3+3x30'
+      - series: 'airsense_http_request_duration_seconds_bucket{endpoint="/forecast/{city}", le="+Inf"}'
+        values: '0+0.2x15 3+3x30'
+      - series: 'airsense_http_request_duration_seconds_count{endpoint="/forecast/{city}"}'
+        values: '0+0.2x15 3+3x30'
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: SlowForecasts
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: SlowForecasts
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Forecasts are slow"
+              description: "95% of forecast requests took up to 4.875 s over the last 10 minutes (limit 2 s)."
+
   # Normal 2-3 h old data does not alert; 5 h old for 15 minutes does.
   - interval: 5m
     input_series:

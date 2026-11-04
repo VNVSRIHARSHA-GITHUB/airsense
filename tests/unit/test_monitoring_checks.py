@@ -30,7 +30,7 @@ def saved(made, base_time, base, horizon, fc, city="Delhi"):
         "base_time_utc": t,
         "base_pm25": base,
         "horizon": horizon,
-        "target_time_utc": t + pd.Timedelta(hours=int(horizon)),
+        "target_time_utc": t + pd.to_timedelta(horizon, unit="h"),
         "pm25_forecast": fc,
     }
 

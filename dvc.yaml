@@ -180,11 +180,37 @@ stages:
       - data/interim/training_metrics.json:
           cache: false
 
+  # Training rows from the live data collected since Oct 2026, built like the
+  # history (same expand_horizon). Its inputs change every 30 min, so between
+  # retrains it shows "new live data" in the console; only airsense_retrain runs it.
+  build_training_live:
+    cmd: python src/airsense/features/build_training_live.py
+    deps:
+      - src/airsense/features/build_training_live.py
+      - src/airsense/features/build_training.py
+      - src/airsense/features/build_features.py
+      - data/features/pm_live
+      - data/raw/live/openmeteo
+    params:
+      - data.cities
+      - forecast.horizon_hours
+      - features.rain_window_hours
+      - features.weather_offset_minutes
+      - features.local_timezone
+      - features.festival_window_days
+      - features.diwali_dates
+    outs:
+      - data/training_live
+    metrics:
+      - data/interim/training_live_metrics.json:
+          cache: false
+
   train:
     cmd: python src/airsense/training/train.py
     deps:
       - src/airsense/training/train.py
       - data/training
+      - data/training_live
     params:
       - data.cities
       - train

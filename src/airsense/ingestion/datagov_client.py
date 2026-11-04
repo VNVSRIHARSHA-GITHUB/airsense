@@ -84,8 +84,13 @@ def fetch_all_records(resource_id: str, api_key: str) -> list[dict]:
     return records
 
 
-def save_snapshot(records: list[dict], out_dir: Path = OUT_DIR) -> Path:
-    """Save one snapshot as CSV, in a folder per day (UTC)."""
+def save_snapshot(records: list[dict], out_dir: Path | None = None) -> Path:
+    """Save one snapshot as CSV, in a folder per day (UTC); default folder OUT_DIR.
+
+    OUT_DIR is looked up at call time (not as a default argument, which Python
+    fixes when the module loads), so tests that point it elsewhere really do.
+    """
+    out_dir = out_dir or OUT_DIR
     fetched_at = datetime.now(UTC)
     df = pd.DataFrame(records)
     df["fetched_at_utc"] = fetched_at.isoformat()

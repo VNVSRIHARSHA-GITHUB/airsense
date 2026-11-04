@@ -107,6 +107,11 @@ def dvc_status(root: Path, timeout_s: float) -> dict:
     return json.loads(r.stdout or "{}")
 
 
+# Stages whose inputs change between retrains by design (the live data grows every
+# 30 min); "changed" there is expected, not a problem: they run with the next retrain.
+WAITS_FOR_RETRAIN = {"build_training_live"}
+
+
 def stage_status(name: str, always_changed: bool, status: dict | None) -> tuple:
     """(status, reasons) for one stage from the parsed `dvc status`."""
     if status is None:
@@ -119,7 +124,9 @@ def stage_status(name: str, always_changed: bool, status: dict | None) -> tuple:
         elif item != "always changed":
             reasons.append(str(item))
     if reasons:
-        return "changed", reasons
+        return (
+            "waits for retrain" if name in WAITS_FOR_RETRAIN else "changed"
+        ), reasons
     return ("runs every time" if always_changed else "up to date"), []
 
 

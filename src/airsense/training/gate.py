@@ -132,6 +132,8 @@ def main() -> int:
                 "mlflow_run_id": metrics["mlflow_run_id"],
                 "passed": passed,
                 "checks": results,
+                # Reported, not checked: error on the newest live days (train.py).
+                "info": {"recent_live": metrics.get("recent_live")},
             },
             indent=2,
         )

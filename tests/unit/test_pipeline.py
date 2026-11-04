@@ -216,3 +216,13 @@ def test_airflow_workflows_from_runs_file(project):
     built = p.build()
     assert {w["dag_id"] for w in built["workflows"]} == set(runs)
     assert built["airflow_url"] == "http://a"
+
+
+def test_live_training_stage_waits_for_the_retrain():
+    status = {
+        "build_training_live": [{"changed deps": {"data/features/pm_live": "modified"}}]
+    }
+    state, reasons = stage_status("build_training_live", False, status)
+    assert state == "waits for retrain"
+    assert reasons == ["changed deps: data/features/pm_live (modified)"]
+    assert stage_status("build_training_live", False, {}) == ("up to date", [])

@@ -1,9 +1,12 @@
 """airsense_retrain: retrain, check and promote the model (Stage 9).
 
-champion_before -> build_training -> train -> gate -> register
+champion_before -> build_training -> build_training_live -> train -> gate -> register
     -> champion_changed? -> restart_serving (model-server, backend) -> wait healthy
 
-Weekly (Sunday 13:00 IST) and on demand (Trigger button). DVC skips steps whose
+Weekly (Sunday 13:00 IST), on demand (Trigger button) and, since Stage 10, when
+airsense_monitor finds a high error or drift (at most every 3 days).
+build_training_live turns the live data collected so far into training rows, so
+every retrain learns from the newest weeks. DVC skips steps whose
 inputs did not change, so a run on unchanged data takes seconds and changes
 nothing. A model that fails the gate stops the run (red): nothing is
 registered and the current champion keeps serving. The containers are restarted
@@ -82,6 +85,7 @@ with DAG(
     (
         before
         >> dvc_stage("build_training", timeout_min=60, retries=0)
+        >> dvc_stage("build_training_live", timeout_min=20, retries=0)
         >> dvc_stage("train", timeout_min=120, retries=0)  # memory-heavy: no retry
         >> dvc_stage("gate", timeout_min=10, retries=0)
         >> dvc_stage("register", timeout_min=30, retries=0)

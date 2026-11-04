@@ -6,6 +6,7 @@ const STATUS = {
   "up to date": { cls: "ok", label: "Up to date", fill: "--ok-bg", stroke: "--ok" },
   changed: { cls: "attention", label: "Inputs changed, needs a re-run", fill: "--warn-bg", stroke: "--warn" },
   "runs every time": { cls: "neutral", label: "Runs on every pipeline run", fill: "--neutral-bg", stroke: "--neutral" },
+  "waits for retrain": { cls: "neutral", label: "New live data, used at the next retrain", fill: "--neutral-bg", stroke: "--neutral" },
   unknown: { cls: "neutral", label: "Status unknown", fill: "--raised", stroke: "--line-strong" },
 };
 const WORD = { ok: "OK", attention: "Needs attention", bad: "Problem", neutral: "No data" };
@@ -118,11 +119,13 @@ function renderSummary(d) {
   const w = workflowState(d);
   const changed = d.stages.filter((s) => s.status === "changed").map((s) => s.name);
   const always = d.stages.filter((s) => s.status === "runs every time").length;
+  const waiting = d.stages.filter((s) => s.status === "waits for retrain").length;
   const pipe = d.dvc_status_error
     ? card("pipeline", "bad", "Pipeline steps", "Status unavailable", d.dvc_status_error)
     : card("pipeline", changed.length ? "attention" : "ok", "Pipeline steps",
-        changed.length ? `${changed.length} of ${d.stages.length} need a re-run` : `${d.stages.length - always} up to date`,
-        changed.length ? `Changed inputs: ${changed.join(", ")}` : `${always} more re-run every time by design`);
+        changed.length ? `${changed.length} of ${d.stages.length} need a re-run` : `${d.stages.length - always - waiting} up to date`,
+        changed.length ? `Changed inputs: ${changed.join(", ")}`
+          : [`${always} more re-run every time by design`, waiting ? `${waiting} waits for the next retrain` : null].filter(Boolean).join("; "));
 
   const c = d.collection;
   const age = c.minutes_since_last;
@@ -293,7 +296,7 @@ function renderGraph(d) {
   });
   fill(svg, defs, ...edges, ...nodes);
   fill(document.getElementById("legend"), 
-    ...["up to date", "changed", "runs every time"].map((k) =>
+    ...["up to date", "changed", "runs every time", "waits for retrain"].map((k) =>
       el("span", {}, el("i", { style: `background:${cssVar(STATUS[k].fill)};border-color:${cssVar(STATUS[k].stroke)}` }), STATUS[k].label)),
   );
 }
