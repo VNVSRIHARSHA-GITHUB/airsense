@@ -183,9 +183,9 @@ stages:
     deps:
     - path: data/raw/live/datagov
       hash: md5
-      md5: 7531ee26ae055385eb9094e4e5a86181.dir
-      size: 19492031
-      nfiles: 256
+      md5: 1b1358f7297744ac2049c963911386aa.dir
+      size: 19958800
+      nfiles: 260
     - path: src/airsense/processing/process_live.py
       hash: md5
       md5: 32f92b64b052f4d70efd450cf70b57a7
@@ -255,17 +255,17 @@ stages:
     outs:
     - path: data/interim/process_live_metrics.json
       hash: md5
-      md5: ac7dfb72d38c47409d2c2021179b79ad
+      md5: e4bb08fc4b73458c866594264ed7678c
       size: 2930
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: 78b022ffce4254329072555a3cf0bd66.dir
-      size: 87392
+      md5: 4bb8b16750ae66b892795d167b7d3451.dir
+      size: 88285
       nfiles: 14
     - path: data/processed/live_station_hourly
       hash: md5
-      md5: bbad26fa67fdf3120a8b1be1409f4551.dir
-      size: 210381
+      md5: 8c9bf4d7b7ffd9a33df6a6c0780bdbb8.dir
+      size: 214210
       nfiles: 14
   validate_processed:
     cmd: python src/airsense/validation/validate_processed.py
@@ -277,8 +277,8 @@ stages:
       nfiles: 534
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: 78b022ffce4254329072555a3cf0bd66.dir
-      size: 87392
+      md5: 4bb8b16750ae66b892795d167b7d3451.dir
+      size: 88285
       nfiles: 14
     - path: src/airsense/validation/validate_processed.py
       hash: md5
@@ -352,7 +352,7 @@ stages:
     outs:
     - path: data/interim/processed_validation.json
       hash: md5
-      md5: 0bc9216a4189785fcd21fea7c295a10d
+      md5: 2e325e5b972eea85765db9664c01a152
       size: 1252
   fetch_weather:
     cmd: python src/airsense/ingestion/fetch_weather_history.py
@@ -595,8 +595,8 @@ stages:
     deps:
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: 78b022ffce4254329072555a3cf0bd66.dir
-      size: 87392
+      md5: 4bb8b16750ae66b892795d167b7d3451.dir
+      size: 88285
       nfiles: 14
     - path: src/airsense/features/build_features.py
       hash: md5
@@ -621,21 +621,21 @@ stages:
     outs:
     - path: data/features/pm_live
       hash: md5
-      md5: 824d231fe98f04ae409d01318eaf9e25.dir
-      size: 297518
+      md5: b6608749a88b946441183a0bd34f765a.dir
+      size: 301814
       nfiles: 14
     - path: data/interim/features_live_metrics.json
       hash: md5
-      md5: 4b429a6f96e58d2f4c28025061fc7da9
-      size: 745
+      md5: 3f38bce428efc30c74ee37feb9c44024
+      size: 742
   feast_online:
     cmd: feast -c feature_repo apply && python 
       src/airsense/features/feast_online.py
     deps:
     - path: data/features/pm_live
       hash: md5
-      md5: 824d231fe98f04ae409d01318eaf9e25.dir
-      size: 297518
+      md5: b6608749a88b946441183a0bd34f765a.dir
+      size: 301814
       nfiles: 14
     - path: feature_repo/feature_store.yaml
       hash: md5
@@ -670,8 +670,8 @@ stages:
     outs:
     - path: data/interim/feast_online_metrics.json
       hash: md5
-      md5: daf4857d718f0b5c62567fafe13e8696
-      size: 662
+      md5: 460574404e0e6628fe30d834b96793ba
+      size: 663
   build_training:
     cmd: feast -c feature_repo apply && python 
       src/airsense/features/build_training.py
@@ -790,10 +790,15 @@ stages:
       md5: 2d05b91c1ce54186477f336f82b364d6.dir
       size: 1230243498
       nfiles: 24
+    - path: data/training_live
+      hash: md5
+      md5: b1b838a67e2264af53d76f4d149941de.dir
+      size: 2534593
+      nfiles: 24
     - path: src/airsense/training/train.py
       hash: md5
-      md5: ae9ce0dc3429c88ae427e97c0f007543
-      size: 19981
+      md5: 9c333f935922395732dfe60b2e79ffe5
+      size: 27128
     params:
       params.yaml:
         data.cities:
@@ -879,32 +884,35 @@ stages:
           train_fraction: 1.0
           target_mode: change
           shap_sample: 5000
+          live_weight_share: 0.1
+          live_weight_max: 20
+          live_holdout_days: 2
           mlflow_experiment: airsense-pm25
     outs:
     - path: data/interim/train_metrics.json
       hash: md5
-      md5: 79900f300b7faab75d33ec30ba10163e
-      size: 24497
+      md5: 1a2bc667baf89a7302a5c409936be148
+      size: 25269
     - path: models/lgbm_model.txt
       hash: md5
-      md5: fea9cdabe985e8e7fe8db361a67b0716
-      size: 1460736
+      md5: e19bd21b79665b1736ae372bc6b16dd5
+      size: 2010159
     - path: reports/train
       hash: md5
-      md5: 4e0731d5122dbef22b6ce2a3e7bf511f.dir
-      size: 229459
+      md5: 644cd5b1b82d8752c060da7b5650725a.dir
+      size: 231089
       nfiles: 3
   gate:
     cmd: python src/airsense/training/gate.py
     deps:
     - path: data/interim/train_metrics.json
       hash: md5
-      md5: 79900f300b7faab75d33ec30ba10163e
-      size: 24497
+      md5: 1a2bc667baf89a7302a5c409936be148
+      size: 25269
     - path: src/airsense/training/gate.py
       hash: md5
-      md5: 91ab2b743ec9ebd4d6a9393a2d014421
-      size: 5013
+      md5: 39a1d8d30744805fb6473a5925eee00c
+      size: 5165
     params:
       params.yaml:
         gate:
@@ -919,23 +927,23 @@ stages:
     outs:
     - path: data/interim/gate_report.json
       hash: md5
-      md5: e3353927ec70cc00f4652d7170043f0c
-      size: 1030
+      md5: ada41fa443d94d433124960c07d005b7
+      size: 1547
   register:
     cmd: python src/airsense/training/register.py
     deps:
     - path: data/interim/gate_report.json
       hash: md5
-      md5: e3353927ec70cc00f4652d7170043f0c
-      size: 1030
+      md5: ada41fa443d94d433124960c07d005b7
+      size: 1547
     - path: data/interim/train_metrics.json
       hash: md5
-      md5: 79900f300b7faab75d33ec30ba10163e
-      size: 24497
+      md5: 1a2bc667baf89a7302a5c409936be148
+      size: 25269
     - path: models/lgbm_model.txt
       hash: md5
-      md5: fea9cdabe985e8e7fe8db361a67b0716
-      size: 1460736
+      md5: e19bd21b79665b1736ae372bc6b16dd5
+      size: 2010159
     - path: src/airsense/training/register.py
       hash: md5
       md5: 64ef552fde0035eaea3fb7aa9b3c186f
@@ -948,8 +956,8 @@ stages:
     outs:
     - path: data/interim/registry.json
       hash: md5
-      md5: 9ec96ffce4bb364b48b30f97db6e4461
-      size: 410
+      md5: 36010d0ff03a528e6de723bdba3086eb
+      size: 462
   guidance_index:
     cmd: python src/airsense/guidance/index.py
     deps:
@@ -974,3 +982,113 @@ stages:
       hash: md5
       md5: e2792e6ebd03fef3b459af9b339bd7bb
       size: 377
+  build_training_live:
+    cmd: python src/airsense/features/build_training_live.py
+    deps:
+    - path: data/features/pm_live
+      hash: md5
+      md5: 5990b84d189c3962b3a16abc46f0bea4.dir
+      size: 301445
+      nfiles: 14
+    - path: data/raw/live/openmeteo
+      hash: md5
+      md5: a6ade334395d4d3af30c2d11ea924961.dir
+      size: 6129688
+      nfiles: 38
+    - path: src/airsense/features/build_features.py
+      hash: md5
+      md5: ef363b68e0e0fb38bba60149d36b8d36
+      size: 10047
+    - path: src/airsense/features/build_training.py
+      hash: md5
+      md5: 1ecc1fbe19d6d862f322d2c17b89f050
+      size: 6812
+    - path: src/airsense/features/build_training_live.py
+      hash: md5
+      md5: e2fd9f6db0e40ab2ea6b257e69f4a1e6
+      size: 6069
+    params:
+      params.yaml:
+        data.cities:
+          Delhi:
+            lat: 28.638
+            lon: 77.1582
+            region: North
+          Lucknow:
+            lat: 26.8546
+            lon: 80.9491
+            region: North
+          Patna:
+            lat: 25.5983
+            lon: 85.0939
+            region: North
+          Kanpur:
+            lat: 26.4493
+            lon: 80.325
+            region: North
+          Jaipur:
+            lat: 26.8934
+            lon: 75.789
+            region: North
+          Chandigarh:
+            lat: 30.7435
+            lon: 76.7693
+            region: North
+          Mumbai:
+            lat: 19.0797
+            lon: 72.8643
+            region: West
+          Ahmedabad:
+            lat: 23.0333
+            lon: 72.5655
+            region: West
+          Pune:
+            lat: 18.5147
+            lon: 73.8634
+            region: West
+          Bengaluru:
+            lat: 12.9659
+            lon: 77.58
+            region: South
+          Chennai:
+            lat: 13.0765
+            lon: 80.2498
+            region: South
+          Hyderabad:
+            lat: 17.466
+            lon: 78.3891
+            region: South
+          Kolkata:
+            lat: 22.5607
+            lon: 88.3673
+            region: East
+          Guwahati:
+            lat: 26.1702
+            lon: 91.7037
+            region: East
+        features.diwali_dates:
+        - '2017-10-19'
+        - '2018-11-07'
+        - '2019-10-27'
+        - '2020-11-14'
+        - '2021-11-04'
+        - '2022-10-24'
+        - '2023-11-12'
+        - '2024-10-31'
+        - '2025-10-20'
+        - '2026-11-08'
+        features.festival_window_days: 2
+        features.local_timezone: Asia/Kolkata
+        features.rain_window_hours: 24
+        features.weather_offset_minutes: 30
+        forecast.horizon_hours: 24
+    outs:
+    - path: data/interim/training_live_metrics.json
+      hash: md5
+      md5: 2621397459bafedf901ecdfa10f56990
+      size: 653
+    - path: data/training_live
+      hash: md5
+      md5: b1b838a67e2264af53d76f4d149941de.dir
+      size: 2534593
+      nfiles: 24
