@@ -16,7 +16,6 @@ data:
     Hyderabad:  {lat: 17.4660, lon: 78.3891, region: South}
     Kolkata:    {lat: 22.5607, lon: 88.3673, region: East}
     Guwahati:   {lat: 26.1702, lon: 91.7037, region: East}
-  pollutant: pm2.5
 
 forecast:
   horizon_hours: 24

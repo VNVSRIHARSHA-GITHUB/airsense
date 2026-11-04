@@ -183,6 +183,7 @@ it ends.
 | The collector has not run for over 75 minutes | Airflow stopped or the laptop was asleep | start Airflow with `bash airflow/start.sh` and keep that terminal open |
 | The CPCB feed has returned no data for over an hour | a gap at the source | nothing to fix; collection resumes when CPCB publishes again |
 | The collector fails | network or API error for over 35 minutes | see `logs/collector.log` and the live workflow in Airflow; check the internet connection |
+| Less than 5 GB free on the laptop's disk | rebuilds and container starts may fail | `df -h /`; `docker builder prune -f`; delete old files you no longer need |
 | Forecasts are much worse than expected | over 3 days the error is above 1.5 × the test error and worse than "no change" | a retrain is started automatically; see the Model tab for its result |
 | Live inputs differ from the training data | drift above 0.3 for at least one input | as above; the drift bars show which input changed |
 

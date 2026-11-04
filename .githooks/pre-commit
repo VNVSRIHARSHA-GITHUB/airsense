@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
-# AirSense pre-commit check (Stage 5): lint and quick tests before every commit.
-# A commit is refused if either fails. Enable once per clone:
+# AirSense pre-commit check (Stage 5): lint, format and quick tests before every commit.
+# A commit is refused if any check fails. Enable once per clone:
 #     git config core.hooksPath .githooks
 # Emergency bypass (avoid): git commit --no-verify
 set -e
@@ -12,6 +12,8 @@ if [ ! -x "$BIN/ruff" ] || [ ! -x "$BIN/pytest" ]; then
 fi
 echo "pre-commit: ruff check ..."
 "$BIN/ruff" check .
+echo "pre-commit: ruff format --check (tracked Python files) ..."
+git ls-files -z '*.py' | xargs -0 "$BIN/ruff" format --check --quiet
 echo "pre-commit: quick unit tests ..."
 "$BIN/pytest" -m "not spark" -q
 echo "pre-commit: OK"

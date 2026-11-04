@@ -40,6 +40,8 @@ STATION_OUT = PROJECT_ROOT / "data" / "processed" / "live_station_hourly"
 CITY_OUT = PROJECT_ROOT / "data" / "processed" / "live_city_hourly"
 METRICS_FILE = PROJECT_ROOT / "data" / "interim" / "process_live_metrics.json"
 
+# The feed's own label for PM2.5. AirSense is built for PM2.5 only (features, AQI
+# bands, model, advice), so this is a fixed value, not a setting.
 POLLUTANT = "PM2.5"
 TIME_FORMAT = "%d-%m-%Y %H:%M:%S"  # data.gov.in last_update, e.g. 20-10-2026 16:00:00
 SOURCE_TZ = "Asia/Kolkata"

@@ -9,6 +9,7 @@ records (a source-side gap, not our fault: Airflow marks the run "skipped"),
 1 anything else (no key, network or API errors after retries).
 Each run writes its result to logs/collector_status.json for the backend's metrics.
 """
+
 import json
 import logging
 import os
@@ -32,10 +33,10 @@ STATUS_FILE = PROJECT_ROOT / "logs" / "collector_status.json"
 EXIT_SOURCE_EMPTY = 99  # Airflow's collect task treats this code as "skipped"
 
 API_URL = "https://api.data.gov.in/resource/{rid}"
-PAGE_SIZE = 200           # records per call; large pages time out on data.gov.in
-TIMEOUT_S = 90            # seconds to wait for the server's response
-MAX_RETRIES = 3           # attempts per page before giving up
-POLLUTANT = "PM2.5"       # only fetch what the model uses
+PAGE_SIZE = 200  # records per call; large pages time out on data.gov.in
+TIMEOUT_S = 90  # seconds to wait for the server's response
+MAX_RETRIES = 3  # attempts per page before giving up
+POLLUTANT = "PM2.5"  # the feed's label; AirSense is built for PM2.5 only
 # data.gov.in throttles the default "python-requests" User-Agent (502 after ~60 s),
 # so identify the client explicitly.
 HEADERS = {"User-Agent": "AirSense-collector/1.0 (DA3408 course project)"}
@@ -48,14 +49,21 @@ def _redact(text: str, secret: str) -> str:
 
 def fetch_page(resource_id: str, api_key: str, offset: int) -> dict:
     """Fetch one page of records, retrying on temporary failures."""
-    params = {"api-key": api_key, "format": "json",
-              "limit": PAGE_SIZE, "offset": offset,
-              "filters[pollutant_id]": POLLUTANT}
+    params = {
+        "api-key": api_key,
+        "format": "json",
+        "limit": PAGE_SIZE,
+        "offset": offset,
+        "filters[pollutant_id]": POLLUTANT,
+    }
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            resp = requests.get(API_URL.format(rid=resource_id),
-                                params=params, headers=HEADERS,
-                                timeout=TIMEOUT_S)
+            resp = requests.get(
+                API_URL.format(rid=resource_id),
+                params=params,
+                headers=HEADERS,
+                timeout=TIMEOUT_S,
+            )
             if resp.status_code != 200:
                 raise RuntimeError(f"HTTP {resp.status_code}")
             body = resp.json()
@@ -63,9 +71,13 @@ def fetch_page(resource_id: str, api_key: str, offset: int) -> dict:
                 raise RuntimeError(f"API error: {body.get('message')}")
             return body
         except (requests.RequestException, RuntimeError, ValueError) as exc:
-            log.warning("Page offset=%d attempt %d/%d failed: %s",
-                        offset, attempt, MAX_RETRIES,
-                        _redact(str(exc), api_key))
+            log.warning(
+                "Page offset=%d attempt %d/%d failed: %s",
+                offset,
+                attempt,
+                MAX_RETRIES,
+                _redact(str(exc), api_key),
+            )
             if attempt == MAX_RETRIES:
                 raise RuntimeError(f"Giving up on offset {offset}") from None
             time.sleep(30 * attempt)  # 30 s, 60 s: rides out short server outages
@@ -109,8 +121,12 @@ def write_status(result: str, records: int, path: Path | None = None) -> None:
         last_ok = json.loads(path.read_text()).get("last_ok_utc")
     except (OSError, ValueError):
         last_ok = None
-    status = {"time_utc": now, "result": result, "records": records,
-              "last_ok_utc": now if result in ("ok", "partial") else last_ok}
+    status = {
+        "time_utc": now,
+        "result": result,
+        "records": records,
+        "last_ok_utc": now if result in ("ok", "partial") else last_ok,
+    }
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
@@ -129,8 +145,9 @@ def main() -> int:
 
 
 def collect() -> int:
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
     load_dotenv(PROJECT_ROOT / ".env")
     api_key = os.environ.get("DATA_GOV_IN_API_KEY", "")
     if not api_key:
@@ -155,8 +172,12 @@ def collect() -> int:
     if len(records) < min_records:
         # Source-side delay (e.g. the midnight reading publishes late), not a
         # pipeline failure: keep the data, warn, and let the next run catch up.
-        log.warning("Partial snapshot: %d records (expected >= %d) saved to %s",
-                    len(records), min_records, path)
+        log.warning(
+            "Partial snapshot: %d records (expected >= %d) saved to %s",
+            len(records),
+            min_records,
+            path,
+        )
         write_status("partial", len(records))
     else:
         log.info("Saved %d records to %s", len(records), path)

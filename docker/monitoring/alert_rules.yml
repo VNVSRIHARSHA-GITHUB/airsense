@@ -90,6 +90,16 @@ groups:
           summary: "The CPCB feed has returned no data for over an hour"
           description: "data.gov.in answers normally but with 0 records: a gap at the source, not in AirSense. Nothing to fix; collection resumes when CPCB publishes again."
 
+      # A rebuild needs ~5 GB (new image + build cache); with less, the model
+      # server could not copy the champion on start-up and the site went down.
+      - alert: DiskSpaceLow
+        expr: airsense_disk_free_bytes < 5e9
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "Less than 5 GB free on the laptop's disk"
+          description: "{{ $value | humanize1024 }}B free. Rebuilds, DVC and Docker need room; below about 5 GB containers may fail to start. Free space (e.g. `docker builder prune`, old files) before the next rebuild."
+
       - alert: CollectorErrors
         expr: airsense_collector_last_result{result="error"} == 1
         for: 35m

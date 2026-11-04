@@ -7,7 +7,8 @@ GET /metrics returns them in Prometheus' text format. Two kinds:
 - read when Prometheus asks (at most every CACHE_SECONDS): dependencies up, age of
   the newest measurement per city, champion version, live-data collection (from
   the snapshot files), the collector's last result (logs/collector_status.json),
-  and the monitoring reports: forecast vs actual and drift (data/monitoring/reports).
+  free space on the disk that holds the project, and the monitoring reports:
+  forecast vs actual and drift (data/monitoring/reports).
 
 Each app gets its own registry, so tests can build many apps in one process.
 /metrics is reachable only inside the Docker network and on 127.0.0.1 (nginx
@@ -16,6 +17,7 @@ does not forward it), so visitors cannot read it.
 
 import json
 import logging
+import shutil
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -112,6 +114,7 @@ class Metrics:
         if svc is not None:
             out += self._service_metrics(svc)
         out += self._collection_metrics()
+        out += self._disk_metrics()
         out += self._collector_metrics()
         out += self._report_metrics()
         return out
@@ -173,6 +176,25 @@ class Metrics:
         if h["minutes_since_last"] is not None:
             since.add_metric([], float(h["minutes_since_last"]))
         return [snaps, since]
+
+    def _disk_metrics(self) -> list:
+        """Free space where the project lives (in the container: the mounted
+        project folder, so the laptop's disk). Builds, Docker images, DVC and
+        MLflow all need room; a full disk stops containers from starting."""
+        try:
+            du = shutil.disk_usage(self.root)
+        except OSError as exc:
+            log.warning("disk usage for metrics failed: %s", exc)
+            return []
+        free = GaugeMetricFamily(
+            "airsense_disk_free_bytes", "Free bytes on the disk holding the project"
+        )
+        free.add_metric([], float(du.free))
+        total = GaugeMetricFamily(
+            "airsense_disk_total_bytes", "Size of the disk holding the project"
+        )
+        total.add_metric([], float(du.total))
+        return [free, total]
 
     def _collector_metrics(self) -> list:
         try:

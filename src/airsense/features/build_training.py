@@ -94,7 +94,9 @@ def compact(df: pd.DataFrame) -> pd.DataFrame:
         elif kind in (np.int64, np.int32):
             out[c] = out[c].astype(np.int16)  # horizon, hour, weekday, month, flags
         elif isinstance(kind, pd.DatetimeTZDtype):
-            out[c] = out[c].astype("datetime64[us, UTC]")  # same format as the feature tables
+            out[c] = out[c].astype(
+                "datetime64[us, UTC]"
+            )  # same format as the feature tables
     return out
 
 

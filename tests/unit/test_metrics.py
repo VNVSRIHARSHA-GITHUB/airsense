@@ -123,3 +123,13 @@ def test_monitoring_reports_become_metrics(tmp_path):
     assert value(lines, 'airsense_drift_psi{input="pm25_24h"}') == 0.45
     assert value(lines, 'airsense_drift_level{input="pm25_24h"}') == 2
     assert not any('input="rain_24h"' in line for line in lines)  # no PSI: no value
+
+
+def test_free_disk_space_is_reported(tmp_path):
+    import shutil
+
+    lines = metric_lines(TestClient(create_app(service=FakeService(), root=tmp_path)))
+    du = shutil.disk_usage(tmp_path)
+    assert value(lines, "airsense_disk_total_bytes") == du.total
+    free = value(lines, "airsense_disk_free_bytes")
+    assert 0 < free <= du.total

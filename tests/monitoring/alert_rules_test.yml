@@ -104,6 +104,23 @@ tests:
               summary: "The CPCB feed has returned no data for over an hour"
               description: "data.gov.in answers normally but with 0 records: a gap at the source, not in AirSense. Nothing to fix; collection resumes when CPCB publishes again."
 
+  # Disk: 20 GB free -> nothing; 3 GB free for 10 minutes -> DiskSpaceLow.
+  - interval: 5m
+    input_series:
+      - series: 'airsense_disk_free_bytes'
+        values: '20e9 20e9 3e9 3e9 3e9 3e9'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: DiskSpaceLow
+        exp_alerts: []
+      - eval_time: 25m
+        alertname: DiskSpaceLow
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations:
+              summary: "Less than 5 GB free on the laptop's disk"
+              description: "2.794GiB free. Rebuilds, DVC and Docker need room; below about 5 GB containers may fail to start. Free space (e.g. `docker builder prune`, old files) before the next rebuild."
+
   # The monitor's reports: error high and drift above 0.3 fire; moderate drift does not.
   - interval: 5m
     input_series:

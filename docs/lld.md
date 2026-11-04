@@ -460,13 +460,14 @@ Read when Prometheus scrapes (a custom collector, cached 15 s so a scrape stays 
 | `airsense_collector_last_result{result}`, `airsense_collector_last_run_timestamp_seconds`, `airsense_collector_last_ok_timestamp_seconds` | from `logs/collector_status.json` (`ok`, `partial`, `empty`, `error`) |
 | `airsense_forecast_mae{forecast}` (`model`, `no_change`), `airsense_forecast_pairs`, `airsense_forecast_skill`, `airsense_forecast_error_limit`, `airsense_forecast_error_high`, `airsense_forecast_mae_by_horizon{hours_ahead}`, `airsense_forecast_evaluated_timestamp_seconds` | from `evaluation.json` |
 | `airsense_drift_psi{input}`, `airsense_drift_level{input}`, `airsense_drift_checked_timestamp_seconds` | from `drift.json` |
+| `airsense_disk_free_bytes`, `airsense_disk_total_bytes` | the laptop's disk (`shutil.disk_usage` of the mounted project folder); DiskSpaceLow below 5 GB |
 
 A missing file means the metric is absent (not 0), so "no data" is never mistaken for
 "all good".
 
 ### 7.2 Alerts
 
-Prometheus evaluates `docker/monitoring/alert_rules.yml` every 30 s (12 rules, listed
+Prometheus evaluates `docker/monitoring/alert_rules.yml` every 30 s (13 rules, listed
 in `docs/architecture.md` §6) and sends firing alerts to Alertmanager, which groups
 them by name (first message after 30 s, updates at most every 5 min, repeat after 6 h)
 and posts them to the backend's `POST /alerts`, also when they resolve. A down model
@@ -485,7 +486,8 @@ end time of a firing alert; the store keeps `ends_at` only for resolved ones.
 | `decide_retrain`, `trigger_retrain` | `monitor_decision.py` (standard library + PyYAML: it runs in Airflow's environment): retrain if `error_high`, or `drift` in a report at most 26 h old, `auto_retrain` is on, and the last automatic start is over 3 days ago | `retrain_decision.json` (every run, with the reason), `retrain_trigger.json` (when started); `airsense_retrain` started |
 
 `evaluate` and `check_drift` read files the 30-minute live workflow rewrites, so they
-use the same one-slot DVC pool. The saved forecasts are versioned daily by
+use the same one-slot DVC pool. `evaluate` runs even when `record_forecasts` failed
+(backend down), so the checks and the decision go on during an outage. The saved forecasts are versioned daily by
 housekeeping (`dvc add data/monitoring/forecasts`); the reports are hourly state and
 not in Git.
 
@@ -580,12 +582,12 @@ hours) and the small embedding model; the model server holds one booster.
 | `tests/unit/test_settings.py` | `params.yaml` with and without environment overrides; the Redis address replaced while its options are kept (no connection made) |
 | `tests/unit/test_service.py` (weather, robustness) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept; an empty integer input gives no forecast; a failed online read is retried once, then reported; an unreachable Redis is reported as "store down"; no technical error text in the warnings |
 | `tests/unit/test_pipeline.py` | steps, reports and graph from a small `dvc.yaml`; status and reasons from `dvc status` output; throughput from different report layouts; gaps in the collection (including a stopped collector as an ongoing gap); newest log problems; caching; a failed `dvc status`; Airflow workflows from the runs file (order, age, run duration, link; nothing shown without Airflow) |
-| `tests/unit/test_metrics.py` | `/metrics` text: requests and forecasts counted, values read on scrape, the monitor's reports as metrics; a scrape still works without the collector status or any snapshot |
+| `tests/unit/test_metrics.py` | `/metrics` text: requests and forecasts counted, values read on scrape, the monitor's reports as metrics, free disk space; a scrape still works without the collector status or any snapshot |
 | `tests/unit/test_alerts.py` | firing then resolved (kept by fingerprint); old resolved alerts dropped; `POST /alerts` stores what Alertmanager sends |
 | `tests/unit/test_record_forecasts.py`, `test_monitoring_checks.py` | saved forecast rows; forecast/actual matching (each forecast once, newest copy); the "error high" rule; PSI on equal and shifted data; drift levels and "not enough data" |
 | `tests/unit/test_monitor_decision.py` | retrain reasons, auto-retrain off, 26-hour drift age, cooldown; decision files written |
 | `tests/unit/test_datagov_client.py` | empty feed → exit code 99 and "empty" status (last good time kept); network failure → "error"; snapshots written only where the test points |
-| `tests/monitoring/alert_rules_test.yml` | `promtool test rules`: BackendDown timing, HighErrorRate, SlowForecasts only with traffic, LiveDataStale, CPCBFeedEmpty, ForecastErrorHigh and DataDrift (6 scenarios) |
+| `tests/monitoring/alert_rules_test.yml` | `promtool test rules`: BackendDown timing, HighErrorRate, SlowForecasts only with traffic, LiveDataStale, CPCBFeedEmpty, DiskSpaceLow, ForecastErrorHigh and DataDrift (7 scenarios) |
 | `docs/ui_test_checklist.md` | manual checks of both web pages in a browser (layout, wording, behaviour when a dependency fails, the Monitoring tab) |
 
 The tests need no network, no running servers and no model download; they run in the

@@ -427,7 +427,7 @@
       "gridPos": {
         "x": 0,
         "y": 20,
-        "w": 24,
+        "w": 18,
         "h": 7
       },
       "fieldConfig": {
@@ -447,6 +447,65 @@
           "legendFormat": "{{result}}"
         }
       ]
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Free disk",
+      "description": "Free space on the laptop's disk. Alert below 5 GB: rebuilds and container starts need room.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 20,
+        "w": 6,
+        "h": 7
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 5000000000.0
+              },
+              {
+                "color": "green",
+                "value": 15000000000.0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "airsense_disk_free_bytes",
+          "legendFormat": "free"
+        }
+      ],
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
     }
   ],
   "editable": false,

@@ -14,7 +14,11 @@ record_forecasts -> evaluate -> decide_retrain -> trigger_retrain
   (monitor_decision.py). The quality gate still decides about the new model.
 
 evaluate and check_drift read files the live pipeline rewrites every 30 min, so
-they use the `dvc` pool and never run while a DVC step writes them.
+they use the `dvc` pool and never run while a DVC step writes them. evaluate runs
+even if record_forecasts failed (backend down): the earlier saved forecasts can
+still be checked, and the drift check and the retrain decision go on. Airflow
+judges the run by its last tasks, so such a run may end green with a red
+record_forecasts box; the outage itself is reported by the BackendDown alert.
 Hourly at :50, after the :35 live run.
 """
 
@@ -76,6 +80,7 @@ with DAG(
     evaluate = BashOperator(
         task_id="evaluate",
         bash_command=in_project("python -m airsense.monitoring.evaluate"),
+        trigger_rule="all_done",  # also when record_forecasts failed (backend down)
         pool=DVC_POOL,
         retries=1,
         retry_delay=timedelta(minutes=2),

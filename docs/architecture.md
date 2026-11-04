@@ -54,7 +54,7 @@ inputs drift (§6).
 | Backend | FastAPI | The application: freshness check, weather, model input, AQI, explanation (SHAP), guidance, pipeline status |
 | Frontend | HTML, CSS, JavaScript, Chart.js, nginx | Forecast page for the public, Pipeline console for operators |
 | Metrics | `prometheus-client` in the backend (`GET /metrics`) | Requests, errors and response times; dependency health, data age, collector state; forecast error, drift (read from the monitor's reports) |
-| Prometheus | **Prometheus 3.5** | Reads `/metrics` every 30 s, keeps 15 days, evaluates 12 alert rules |
+| Prometheus | **Prometheus 3.5** | Reads `/metrics` every 30 s, keeps 15 days, evaluates 13 alert rules |
 | Alertmanager | **Alertmanager 0.28** | Groups and forwards alerts to the backend (`POST /alerts`), which keeps them for the console |
 | Dashboards | **Grafana 12** | Two dashboards (service; data and model), provisioned from files; four panels embedded in the console |
 | Model monitoring | Python, `airsense_monitor` workflow | Saves every served forecast, compares it 24 h later with the measurement and with "no change", checks drift (PSI) daily, decides on an automatic retrain |
@@ -219,6 +219,7 @@ because DVC locks the repository (two DVC commands at once would fail).
 | Service | requests and response time per endpoint and status; forecasts made / unavailable / failed; model-server call time | counted as requests happen |
 | Dependencies | model server, live data store (Redis), served model = registry champion | the backend's health check, on each read |
 | Live data | age of the newest value per city, cities with data, snapshots in 24 h, minutes since the last one, collector's last result | data files and `logs/collector_status.json` |
+| Laptop | free and total space on the disk that holds the project | the mounted project folder |
 | Model | forecast error of the model and of "no change" (3 days), skill, pairs, error by hours ahead, "error high"; PSI and level per input | the monitor's reports |
 
 **Model monitoring** (`airsense_monitor`, hourly):
@@ -232,6 +233,8 @@ because DVC locks the repository (two DVC commands at once would fail).
   live data against training rows of the **same months** (October–November): every
   season differs from the yearly average. PSI 0.2–0.3 is moderate, above 0.3 drift;
   fewer than 200 live values: "not enough data".
+- *When the backend is down:* the forecasts of that hour cannot be saved, but the
+  check of the earlier ones, the drift check and the retrain decision still run.
 - *Automatic retrain:* when the error is high or there is drift (report at most 26 h
   old) and `monitoring.auto_retrain` is on, `airsense_retrain` is started, at most
   every 3 days. The quality gate and the champion rule still decide whether the new
@@ -250,6 +253,7 @@ because DVC locks the repository (two DVC commands at once would fail).
 | CollectorNotRunning | no collector run for 75 min | warning |
 | CPCBFeedEmpty | the feed has been empty for over an hour | warning |
 | CollectorErrors | the collector failing for 35 min | warning |
+| DiskSpaceLow | less than 5 GB free on the laptop's disk for 10 min | warning |
 | ForecastErrorHigh | the monitor's "error high" | warning |
 | DataDrift | largest PSI > 0.3 | warning |
 
@@ -278,6 +282,7 @@ Tested by stopping or crashing each part while the pages were open:
 | Backend crash | a few seconds of "service not running" | Docker restarts it (≈ 6 s), healthy again after ≈ 22 s |
 | Backend stopped | red bar at once: the service is not running or not answering; nginx keeps serving the pages | after `docker compose start backend` |
 | Whole system (`down` / `up`) | — | features and guidance survive in Docker volumes; no pipeline run needed |
+| Disk almost full (seen 5 Nov, about 2 GB free during a rebuild) | the model server could not copy the champion on start-up; `docker compose up` stopped, so backend and frontend were not started (site down) | free space, then `docker compose up -d`; since then the DiskSpaceLow alert warns below 5 GB |
 
 Monitoring, tested on the laptop on 4–5 Nov 2026 (times IST):
 
@@ -347,6 +352,7 @@ changed. To start the images that already exist without building, give their tag
 | Run any Airflow command | `bash airflow/cli.sh <command>`, e.g. `dags list`, `dags trigger airsense_live` |
 | Alerts now | console Monitoring tab, or http://localhost:9090/alerts |
 | Test the alert rules | `docker run --rm -v "$PWD":/w -w /w --entrypoint promtool prom/prometheus:v3.5.0 test rules tests/monitoring/alert_rules_test.yml` |
+| Free disk space | `df -h /`; `docker system df`; `docker builder prune -f` removes old build layers only (the next build is slower). A rebuild needs about 5 GB free (DiskSpaceLow alert below that) |
 | After changing a container's mounts | `docker compose rm -s -f <service> && docker compose up -d <service>` (a plain `up -d` can keep the old mount); check with `docker inspect <container>` |
 | Stop everything (data kept) | `docker compose down` |
 | Remove old image versions | `KEEP=$(git rev-parse --short HEAD); docker images --format '{{.Repository}}:{{.Tag}}' \| grep -E '^airsense-(app\|frontend):' \| grep -v ":$KEEP$" \| xargs -r docker rmi` |
@@ -378,6 +384,10 @@ Airflow, then clear the next task with "Downstream".
   machine, as here; a server would run its components separately on PostgreSQL.
 - **Single machine.** All services run on one laptop; no replication or load balancing.
   The containers make moving to a server a configuration change, not a rewrite.
+- **The DVC backup is on the same disk.** `dvc push` copies the data versions to
+  `~/dvc-remote` on the laptop: it protects against deleted or broken files, not
+  against losing the disk. A second disk would be one more DVC remote; a cloud
+  remote is not allowed in this project.
 - **Alerts go to the console only.** Alertmanager sends them to the backend; e-mail or
   chat notifications would be one more receiver in `alertmanager.yml`. Grafana and
   Prometheus are visible only on the laptop.
@@ -424,7 +434,7 @@ flowchart LR
     end
 
     subgraph monitoring ["Monitoring · Docker Compose"]
-        PR["Prometheus<br/>12 alert rules"]
+        PR["Prometheus<br/>13 alert rules"]
         AM["Alertmanager"]
         GR["Grafana<br/>2 dashboards"]
         PR --> AM
