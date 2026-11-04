@@ -1,5 +1,6 @@
 // Pipeline console: everything comes from GET /pipeline (read-only).
-// Four summary cards on top; details in four tabs: Workflows, Pipeline, Live data, Model.
+// Five summary cards on top; details in five tabs: Workflows, Pipeline, Live data, Model,
+// Monitoring.
 
 const REFRESH_MS = 60 * 1000;
 const STATUS = {
@@ -10,8 +11,8 @@ const STATUS = {
   unknown: { cls: "neutral", label: "Status unknown", fill: "--raised", stroke: "--line-strong" },
 };
 const WORD = { ok: "OK", attention: "Needs attention", bad: "Problem", neutral: "No data" };
-const TABS = ["workflows", "pipeline", "live", "model"];
-const page = { data: null, selected: null, chart: null, tabs: null };
+const TABS = ["workflows", "pipeline", "live", "model", "monitoring"];
+const page = { data: null, selected: null, chart: null, tabs: null, errChart: null, grafana: false };
 
 const statusOf = (s) => STATUS[s] || STATUS.unknown;
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -61,6 +62,32 @@ function buildPage() {
       el("h3", {}, "Quality gate"),
       el("p", { class: "hint", id: "gate-line" }),
       el("ul", { class: "checks", id: "checks" }))));
+  const monitoring = panel(
+    el("p", { class: "hint" }, "Is the service healthy and is the model still good? Alerts come from Prometheus and Alertmanager; the forecast check and the drift check are run by the hourly monitor workflow."),
+    el("h3", { class: "sub-h first" }, "Alerts"),
+    el("div", { id: "alerts-now" }),
+    el("details", { class: "resolved", id: "alerts-past-wrap" },
+      el("summary", {}, "Recently resolved"), el("ul", { class: "plain", id: "alerts-past" })),
+    el("h3", { class: "sub-h" }, "Forecasts vs what happened"),
+    el("p", { class: "hint", id: "eval-line" }),
+    el("div", { class: "big-stats", id: "eval-stats" }),
+    el("div", { class: "mon-grid" },
+      el("div", {},
+        el("p", { class: "hint" }, "Average miss per day, in µg/m³: the model against “no change” (assume the 24-hour average stays as it is)."),
+        el("div", { class: "chart-box short" }, el("canvas", { id: "err-chart", role: "img", "aria-label": "Daily forecast error of the model and of no change" }))),
+      el("div", {},
+        el("p", { class: "hint" }, "By how far ahead the forecast was made (last days)."),
+        el("div", { class: "table-wrap" }, el("table", { class: "data", id: "eval-horizon" })))),
+    el("h3", { class: "sub-h" }, "Do the live inputs still look like the training data?"),
+    el("p", { class: "hint", id: "drift-line" }),
+    el("div", { class: "drift", id: "drift-bars" }),
+    el("div", { class: "key", id: "drift-key" }),
+    el("h3", { class: "sub-h" }, "Automatic retraining"),
+    el("dl", { class: "kv", id: "retrain-kv" }),
+    el("h3", { class: "sub-h" }, "Live panels from Grafana"),
+    el("div", { id: "grafana" }),
+    el("div", { class: "tool-links", id: "tool-links" }),
+  );
 
   const first = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "workflows";
   page.tabs = makeTabs("Pipeline details", [
@@ -68,12 +95,27 @@ function buildPage() {
     { id: "pipeline", label: "Pipeline", panel: pipeline },
     { id: "live", label: "Live data", panel: live },
     { id: "model", label: "Model", panel: model },
+    { id: "monitoring", label: "Monitoring", panel: monitoring },
   ], first, (id) => {
+    showTab(id);
     history.replaceState(null, "", `#${id}`);
     document.querySelectorAll(".status").forEach((c) => c.classList.toggle("current", c.dataset.tab === id));
     if (id === "pipeline" && page.data) renderSpeed(page.data);  // canvas needs a visible size
+    if (id === "monitoring" && page.data) { renderErrChart(page.data); renderGrafana(page.data); }
   });
   fill(document.getElementById("console-tabs"), page.tabs);
+  showTab(first);
+}
+
+// On a phone the five tabs scroll sideways: keep the selected one in view
+// (without moving the page up or down).
+function showTab(id) {
+  const tab = document.getElementById(`tab-${id}`);
+  if (!tab) return;
+  const bar = tab.parentElement;
+  const t = tab.getBoundingClientRect(), b = bar.getBoundingClientRect();
+  if (t.right > b.right) bar.scrollLeft += t.right - b.right + 4;
+  else if (t.left < b.left) bar.scrollLeft -= b.left - t.left + 4;
 }
 
 function setBadge(tab, text) {
@@ -142,13 +184,17 @@ function renderSummary(d) {
     [m.test_mae != null ? `Test error ${m.test_mae.toFixed(2)} µg/m³` : null,
       g ? `${passed} of ${g.checks.length} gate checks passed` : null].filter(Boolean).join("; "));
 
-  fill(document.getElementById("status-row"), 
-    card("workflows", w.cls, "Scheduled workflows", w.line, w.detail), pipe, live, model);
+  const mon = monitoringState(d);
+  fill(document.getElementById("status-row"),
+    card("workflows", w.cls, "Scheduled workflows", w.line, w.detail), pipe, live, model,
+    card("monitoring", mon.cls, "Monitoring", mon.line, mon.detail));
   const current = location.hash.slice(1) || "workflows";
   document.querySelectorAll(".status").forEach((x) => x.classList.toggle("current", x.dataset.tab === current));
   setBadge("workflows", w.cls === "ok" || w.cls === "neutral" ? "" : "!");
   setBadge("pipeline", changed.length ? String(changed.length) : "");
   setBadge("live", c.gaps_24h.length ? String(c.gaps_24h.length) : "");  // number of gaps
+  setBadge("monitoring", mon.badge);
+  showTab(current);  // a new badge can widen the selected tab
 }
 
 // ---------- workflows (Airflow) ----------
@@ -162,7 +208,7 @@ const WORKFLOWS = {
   airsense_live: { what: "Collect live data, process, validate, refresh the live features", when: "Every 30 min, at :05 and :35", staleMin: 45, times: () => Array.from({ length: 48 }, (_, i) => [Math.floor(i / 2), i % 2 ? 35 : 5]) },
   airsense_retrain: { what: "Retrain, quality gate, register; serve a new champion", when: "Every Sunday at 13:00 IST, or started manually", staleMin: null, times: () => [[13, 0]], weekday: 0 },
   airsense_housekeeping: { what: "Version the live data and saved forecasts, daily Git checkpoint, clean-up", when: "Daily at 23:15 IST", staleMin: null, times: () => [[23, 15]] },
-  airsense_monitor: { what: "Save every city's forecast, to compare with the measurements 24 h later", when: "Every hour at :50", staleMin: 75, times: () => Array.from({ length: 24 }, (_, h) => [h, 50]) },
+  airsense_monitor: { what: "Save every city's forecast; compare earlier forecasts with what was measured; daily drift check; start a retrain if needed", when: "Every hour at :50", staleMin: 75, times: () => Array.from({ length: 24 }, (_, h) => [h, 50]) },
 };
 
 // The next scheduled start (schedules are in IST, UTC+5:30, no daylight saving).
@@ -490,6 +536,212 @@ function renderModel(d) {
   }));
 }
 
+// ---------- monitoring ----------
+
+const MON_STALE_H = 3;  // the monitor runs hourly: an older report means it is not running
+const fmtMae = (x) => (x == null ? "—" : `${x.toFixed(1)} µg/m³`);
+const INPUT_NAME = {
+  pm25_24h: "PM2.5, 24-hour average", pm25_change_24h: "PM2.5 change over 24 hours",
+  temperature_2m: "Temperature", relative_humidity_2m: "Humidity", wind_speed_10m: "Wind speed", rain_24h: "Rain over 24 hours",
+};
+const LEVEL = { stable: "ok", moderate: "attention", drift: "bad" };
+
+function monitoringState(d) {
+  const m = d.monitoring || {};
+  const firing = (d.alerts && d.alerts.firing) || [];
+  const ev = m.evaluation, dr = m.drift;
+  const crit = firing.filter((a) => a.severity === "critical");
+  const evalLine = ev && ev.overall && ev.overall.pairs
+    ? `Forecast error ${fmtMae(ev.overall.mae_model)} vs “no change” ${fmtMae(ev.overall.mae_no_change)}`
+    : "No forecast/actual pairs yet";
+  const badge = firing.length ? String(firing.length) : (ev && ev.error_high) || (dr && dr.drift) ? "!" : "";
+  if (crit.length) return { cls: "bad", line: `${firing.length} alert${firing.length > 1 ? "s" : ""} firing`, detail: crit.map((a) => a.summary).join("; "), badge };
+  if (firing.length) return { cls: "attention", line: `${firing.length} alert${firing.length > 1 ? "s" : ""} firing`, detail: firing.map((a) => a.summary).join("; "), badge };
+  if (!ev && !dr) return { cls: "neutral", line: "No checks yet", detail: "The hourly monitor workflow has not run yet", badge };
+  if (ev && ev.age_hours > MON_STALE_H) return { cls: "attention", line: "Monitor not running", detail: `Last forecast check ${fmtWhenAgo(ev.evaluated_at_utc)}`, badge };
+  if (ev && ev.error_high) return { cls: "attention", line: "Forecast error high", detail: evalLine, badge };
+  if (dr && dr.drift) return { cls: "attention", line: "Data drift", detail: "Live inputs differ from the training data", badge };
+  return { cls: "ok", line: "No alerts", detail: evalLine, badge };
+}
+
+function renderAlerts(d) {
+  const a = d.alerts || { firing: [], resolved: [] };
+  fill(document.getElementById("alerts-now"), ...(a.firing.length
+    ? a.firing.map((x) => el("div", { class: `alert ${x.severity === "critical" ? "bad" : "attention"}` },
+        el("div", { class: "alert-top" },
+          el("span", { class: `pill ${x.severity === "critical" ? "bad" : "attention"}` }, x.severity === "critical" ? "Critical" : "Warning"),
+          el("strong", {}, x.summary || x.alertname),
+          el("span", { class: "sub" }, x.starts_at ? `since ${fmtWhenAgo(x.starts_at)}` : "")),
+        el("p", {}, x.description)))
+    : [el("p", { class: "empty-ok" }, el("span", { class: "pill ok" }, "OK"), "No alerts firing: the service, the live data and the model are within their limits.")]));
+  const past = a.resolved || [];
+  document.getElementById("alerts-past-wrap").hidden = !past.length;
+  fill(document.getElementById("alerts-past"), ...past.map((x) => {
+    const lasted = x.starts_at && x.ends_at ? (new Date(x.ends_at) - new Date(x.starts_at)) / 60000 : null;
+    return el("li", {},
+      el("span", {}, el("strong", {}, x.summary || x.alertname), el("span", { class: "sub" }, x.alertname)),
+      el("span", { class: "sub" }, `resolved ${x.ends_at ? fmtWhenAgo(x.ends_at) : ""}${lasted != null ? `, lasted ${fmtDuration(lasted)}` : ""}`));
+  }));
+}
+
+function renderEvaluation(d) {
+  const ev = (d.monitoring || {}).evaluation;
+  const line = document.getElementById("eval-line");
+  const stats = document.getElementById("eval-stats");
+  const table = document.getElementById("eval-horizon");
+  if (!ev) {
+    line.textContent = "No forecast check yet: the monitor saves every forecast and compares it with the measurement once its hour has passed.";
+    fill(stats); fill(table);
+    return;
+  }
+  const o = ev.overall || {};
+  const stale = ev.age_hours > MON_STALE_H;
+  fill(line,
+    `Every forecast the service showed is saved and, once its hour has passed, compared with what was measured. Last ${ev.window_days} days; checked ${fmtWhenAgo(ev.evaluated_at_utc)}.`,
+    stale ? el("span", { class: "warn-line" }, "This check is old: is Airflow running?") : null);
+  const enough = o.pairs >= ev.min_pairs;
+  fill(stats,
+    el("div", { class: "big-stat" + (ev.error_high ? " bad" : "") },
+      el("span", {}, "Model error"), el("strong", {}, fmtMae(o.mae_model)),
+      el("em", {}, ev.limit_mae != null ? `alert above ${ev.limit_mae.toFixed(1)} (1.5 × test error ${ev.test_mae})` : "average miss")),
+    el("div", { class: "big-stat" }, el("span", {}, "“No change” error"), el("strong", {}, fmtMae(o.mae_no_change)), el("em", {}, "the baseline to beat")),
+    el("div", { class: "big-stat" + (o.skill != null && o.skill < 0 ? " warn" : "") },
+      el("span", {}, "Better than “no change”"), el("strong", {}, o.skill == null ? "—" : `${Math.round(o.skill * 100)}%`), el("em", {}, "lower error than the baseline")),
+    el("div", { class: "big-stat" + (enough ? "" : " warn") },
+      el("span", {}, "Forecast/actual pairs"), el("strong", {}, fmtNum(o.pairs || 0)),
+      el("em", {}, enough ? `enough to judge (≥ ${ev.min_pairs})` : `under ${ev.min_pairs}: too few to alert`)));
+  const H = { "1-6h": "1–6 hours ahead", "7-12h": "7–12 hours ahead", "13-24h": "13–24 hours ahead" };
+  const rows = Object.entries(ev.by_horizon || {});
+  fill(table,
+    el("thead", {}, el("tr", {}, ["Forecast", "Model", "No change", "Pairs"].map((h) => el("th", { scope: "col" }, h)))),
+    el("tbody", {}, ...rows.map(([k, s]) => el("tr", {},
+      el("td", {}, H[k] || k),
+      el("td", { class: s.mae_model != null && s.mae_no_change != null && s.mae_model > s.mae_no_change ? "worse" : "" }, fmtMae(s.mae_model)),
+      el("td", {}, fmtMae(s.mae_no_change)),
+      el("td", {}, fmtNum(s.pairs || 0))))));
+}
+
+function renderErrChart(d) {
+  const canvas = document.getElementById("err-chart");
+  if (!canvas.offsetParent) return;  // tab hidden: drawn when it is opened
+  const ev = (d.monitoring || {}).evaluation;
+  const days = (ev && ev.daily) || [];
+  if (page.errChart) page.errChart.destroy();
+  page.errChart = null;
+  if (!days.length) return;
+  const at = (x) => new Date(`${x.date}T12:00:00+05:30`);
+  const ds = (label, key, color, dash) => ({
+    label, data: days.map((x) => x[key]), borderColor: color, backgroundColor: color, borderWidth: 2.5,
+    borderDash: dash, pointRadius: 3.5, pointHoverRadius: 5, tension: 0.25, spanGaps: true,
+  });
+  page.errChart = new Chart(canvas, {
+    type: "line",
+    data: { labels: days.map((x) => fmtDay(at(x))), datasets: [ds("Model", "mae_model", cssVar("--accent"), []), ds("No change", "mae_no_change", cssVar("--muted"), [6, 4])] },
+    options: {
+      maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
+      scales: {
+        x: { ticks: { color: cssVar("--muted"), maxRotation: 0, autoSkipPadding: 10 }, grid: { display: false }, border: { display: false } },
+        y: { beginAtZero: true, title: { display: true, text: "µg/m³", color: cssVar("--muted") }, ticks: { color: cssVar("--muted") }, grid: { color: cssVar("--grid") }, border: { display: false } },
+      },
+      plugins: {
+        legend: { labels: { color: cssVar("--ink"), usePointStyle: true, boxHeight: 6 } },
+        tooltip: {
+          backgroundColor: cssVar("--tip-bg"), titleColor: cssVar("--tip-ink"), bodyColor: cssVar("--tip-ink"),
+          callbacks: { label: (c) => `${c.dataset.label}: ${fmtMae(c.parsed.y)}`, footer: (items) => `${fmtNum(days[items[0].dataIndex].pairs)} pairs` },
+        },
+      },
+    },
+  });
+}
+
+function renderDrift(d) {
+  const m = d.monitoring || {};
+  const dr = m.drift;
+  const line = document.getElementById("drift-line");
+  const bars = document.getElementById("drift-bars");
+  const nextAt = m.drift_hour_ist != null ? nextRun({ times: () => [[m.drift_hour_ist, 50]] }) : null;
+  const next = nextAt ? ` Next check ${fmtWhen(nextAt)}.` : "";
+  if (!dr) { line.textContent = `No drift check yet.${next}`; fill(bars); fill(document.getElementById("drift-key")); return; }
+  fill(line, `PSI (population stability index) of each input: the last ${dr.live_days} days of live data against ${dr.reference}. Checked ${fmtWhenAgo(dr.checked_at_utc)}.${next}`);
+  const values = Object.values(dr.inputs).map((v) => v.psi).filter((v) => v != null);
+  const top = Math.max(0.5, dr.psi_drift * 1.6, ...values.map((v) => v * 1.15));
+  const pos = (x) => `${Math.min(100, (x / top) * 100)}%`;
+  fill(bars, ...Object.entries(dr.inputs).map(([k, v]) => {
+    const cls = LEVEL[v.level] || "neutral";
+    const has = v.psi != null;
+    return el("div", { class: "drift-row" },
+      el("span", { class: "drift-name" }, INPUT_NAME[k] || k),
+      el("div", { class: "drift-bar", "data-tip": has ? `${INPUT_NAME[k] || k}
+PSI ${v.psi.toFixed(2)} (${v.level})
+Median live ${v.live_median}, training ${v.train_median}
+${fmtNum(v.live_rows)} live values` : `${INPUT_NAME[k] || k}
+${v.level} (${fmtNum(v.live_rows)} live values)` },
+        has ? el("b", { class: cls, style: `width:${pos(v.psi)}` }) : null,
+        el("i", { style: `left:${pos(dr.psi_moderate)}` }), el("i", { class: "strong", style: `left:${pos(dr.psi_drift)}` })),
+      el("span", { class: "drift-val" }, has ? v.psi.toFixed(2) : "—"),
+      el("span", { class: `pill ${has ? cls : "neutral"}` }, cap(v.level)));
+  }));
+  fill(document.getElementById("drift-key"),
+    el("span", {}, el("i", { class: "tick" }), `${dr.psi_moderate}: moderate change`),
+    el("span", {}, el("i", { class: "tick strong" }), `${dr.psi_drift}: drift (alert, may start a retrain)`));
+}
+
+function renderRetrain(d) {
+  const m = d.monitoring || {};
+  const dec = m.decision, trig = m.last_trigger;
+  const recent = d.gate && d.gate.info && d.gate.info.recent_live;
+  const r = d.registry;
+  let nextOk = null;
+  if (trig && m.cooldown_days) nextOk = new Date(new Date(trig.triggered_at_utc).getTime() + m.cooldown_days * 86400000);
+  const kv = [
+    ["Automatic retraining", m.auto_retrain ? `On: started when the forecast error is high or there is drift, at most every ${m.cooldown_days} days` : "Off (monitoring.auto_retrain in params.yaml)"],
+    ["Latest decision", dec ? [el("span", { class: `pill ${dec.retrain ? "attention" : "ok"}` }, dec.retrain ? "Retrain started" : "No retrain"), " ", `${cap(dec.reason)}. ${fmtWhenAgo(dec.decided_at_utc)}`] : "No decision yet"],
+    ["Last automatic start", trig ? `${fmtWhenAgo(trig.triggered_at_utc)}: ${trig.reason}` : "Never"],
+    nextOk && nextOk > Date.now() ? ["Next possible", `${fmtWhen(nextOk)} (cooldown)`] : null,
+    recent ? ["Newest live days (latest retrain)",
+      `${fmtMae(recent.model.mae)} vs “no change” ${fmtMae(recent.persistence.mae)} (${fmtNum(recent.model.n)} forecasts, ${fmtDay(recent.from_utc)} to ${fmtDay(recent.to_utc)}; reported, not used by the gate)`] : null,
+    r ? ["Champion decision", `${r.promoted ? `Version ${r.champion_version} promoted` : `Kept version ${r.champion_version}`}: ${r.reason}`] : null,
+  ].filter(Boolean);
+  fill(document.getElementById("retrain-kv"), ...kv.flatMap(([a, b]) => [el("dt", {}, a), el("dd", {}, ...[].concat(b))]));
+}
+
+// Grafana panels: [dashboard uid, panel id, title]. Embedded only on the laptop,
+// where Grafana listens (127.0.0.1:3000); loaded the first time the tab is opened.
+const GRAFANA_PANELS = [
+  ["airsense-service", 5, "Requests per minute by endpoint"],
+  ["airsense-service", 7, "Forecast response time"],
+  ["airsense-data", 6, "Newest and oldest data age"],
+  ["airsense-data", 7, "Snapshots in the last 24 h over time"],
+];
+const onLaptop = () => ["localhost", "127.0.0.1", "::1", "[::1]"].includes(location.hostname);
+const panelUrl = (g, [uid, id]) => `${g.replace(/\/$/, "")}/d-solo/${uid}/airsense?orgId=1&panelId=${id}&theme=${currentTheme()}&from=now-24h&to=now&refresh=1m`;
+
+function renderGrafana(d) {
+  const box = document.getElementById("grafana");
+  const links = d.monitoring_links || {};
+  const g = links.grafana;
+  const tools = [
+    g ? ["Grafana: service dashboard", `${g.replace(/\/$/, "")}/d/airsense-service`] : null,
+    g ? ["Grafana: data and model dashboard", `${g.replace(/\/$/, "")}/d/airsense-data`] : null,
+    links.prometheus ? ["Prometheus: alert rules", `${links.prometheus.replace(/\/$/, "")}/alerts`] : null,
+    links.alertmanager ? ["Alertmanager", links.alertmanager] : null,
+  ].filter(Boolean);
+  fill(document.getElementById("tool-links"), ...tools.map(([t, u]) =>
+    el("a", { class: "ext", href: u, target: "_blank", rel: "noopener" }, t, svgIcon("external"))));
+  if (!g) { fill(box, el("p", { class: "hint" }, "No Grafana address configured (serving.grafana_url).")); return; }
+  if (!onLaptop()) {
+    fill(box, el("p", { class: "note-local" }, "Grafana, Prometheus and Alertmanager run only on the laptop (not reachable from other devices), so the live panels and links work only when this page is opened on the laptop itself."));
+    page.grafana = false;
+    return;
+  }
+  if (!box.offsetParent) return;  // tab hidden
+  if (page.grafana === currentTheme()) return;  // already showing; the panels refresh themselves
+  page.grafana = currentTheme();
+  fill(box, el("div", { class: "grafana-grid" }, ...GRAFANA_PANELS.map((p) =>
+    el("iframe", { src: panelUrl(g, p), title: `Grafana: ${p[2]}`, loading: "lazy", referrerpolicy: "no-referrer" }))),
+  el("p", { class: "hint" }, "Live from Grafana, last 24 hours, refreshed every minute. If the panels stay empty, check that the Grafana container is running (docker compose ps)."));
+}
+
 // ---------- refresh ----------
 
 async function refresh() {
@@ -506,6 +758,12 @@ async function refresh() {
     renderSpeed(d);
     renderLive(d);
     renderModel(d);
+    renderAlerts(d);
+    renderEvaluation(d);
+    renderErrChart(d);
+    renderDrift(d);
+    renderRetrain(d);
+    renderGrafana(d);
   } catch (e) {
     showBanner(`Could not load the pipeline status: ${reason(e)}. Use Refresh to try again in a moment.`);
     if (!page.data) document.getElementById("asof").textContent = "No status right now";
@@ -515,6 +773,8 @@ async function refresh() {
 setupShell();
 buildPage();
 document.getElementById("refresh").addEventListener("click", refresh);
-document.addEventListener("themechange", () => { if (page.data) { renderGraph(page.data); renderSpeed(page.data); } });
+document.addEventListener("themechange", () => {
+  if (page.data) { renderGraph(page.data); renderSpeed(page.data); renderErrChart(page.data); renderGrafana(page.data); }
+});
 refresh();
 setInterval(refresh, REFRESH_MS);

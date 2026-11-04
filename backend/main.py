@@ -123,12 +123,18 @@ def create_app(service=None, pipeline=None, root=PROJECT_ROOT) -> FastAPI:
         if state["pipeline"] is None:
             from airsense.serving.pipeline import PipelineStatus
 
-            cfg = state["service"].params["serving"]
+            params = state["service"].params
+            cfg = params["serving"]
             state["pipeline"] = PipelineStatus(
                 cache_seconds=cfg["pipeline_cache_seconds"],
                 dvc_timeout_s=cfg["dvc_status_timeout_seconds"],
                 airflow_url=cfg.get("airflow_url"),
                 model_info=state["service"].model,
+                monitoring_cfg=params.get("monitoring", {}),
+                links={
+                    k: cfg.get(f"{k}_url")
+                    for k in ("grafana", "prometheus", "alertmanager")
+                },
             )
         yield
 

@@ -226,3 +226,51 @@ def test_live_training_stage_waits_for_the_retrain():
     assert state == "waits for retrain"
     assert reasons == ["changed deps: data/features/pm_live (modified)"]
     assert stage_status("build_training_live", False, {}) == ("up to date", [])
+
+
+def test_monitoring_reports_are_trimmed_and_aged(tmp_path):
+    from airsense.serving.pipeline import monitoring_summary
+
+    now = datetime(2026, 11, 4, 12, 0, tzinfo=UTC)
+    cfg = {"auto_retrain": True, "retrain_cooldown_days": 3, "drift_hour_ist": 22}
+    empty = monitoring_summary(tmp_path, now, cfg)
+    assert empty["evaluation"] is None and empty["drift"] is None
+    assert empty["decision"] is None and empty["auto_retrain"] is True
+
+    reports = tmp_path / "data" / "monitoring" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "evaluation.json").write_text(
+        json.dumps(
+            {
+                "evaluated_at_utc": "2026-11-04T10:30:00+00:00",
+                "overall": {"pairs": 120, "mae_model": 9.1, "mae_no_change": 9.8},
+                "error_high": False,
+                "by_city": {"Delhi": {}},  # long, not needed by the console
+                "daily": [{"date": "2026-11-04", "pairs": 120}],
+            }
+        )
+    )
+    (reports / "drift.json").write_text(
+        json.dumps({"checked_at_utc": "2026-11-03T17:00:00+00:00", "drift": False})
+    )
+    (reports / "retrain_decision.json").write_text(
+        json.dumps({"decided_at_utc": "2026-11-04T11:50:00+00:00", "retrain": False})
+    )
+    out = monitoring_summary(tmp_path, now, cfg)
+    assert out["evaluation"]["age_hours"] == 1.5
+    assert "by_city" not in out["evaluation"]
+    assert out["evaluation"]["daily"][0]["pairs"] == 120
+    assert out["drift"]["age_hours"] == 19.0
+    assert out["decision"]["retrain"] is False and out["last_trigger"] is None
+
+
+def test_pipeline_has_monitoring_and_links(project):
+    p = PipelineStatus(
+        root=project,
+        status_fn=lambda root, t: {},
+        monitoring_cfg={"auto_retrain": False},
+        links={"grafana": "http://localhost:3000"},
+    )
+    out = p.build()
+    assert out["monitoring"]["auto_retrain"] is False
+    assert out["monitoring_links"] == {"grafana": "http://localhost:3000"}

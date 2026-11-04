@@ -131,6 +131,9 @@ serving:                         # Stage 6 backend
   pipeline_cache_seconds: 60     # console data rebuilt at most once a minute
   dvc_status_timeout_seconds: 60 # dvc status for the console gives up after this
   airflow_url: http://localhost:8081   # Airflow UI, linked from the console (Stage 9)
+  grafana_url: http://localhost:3000   # monitoring tools, linked and embedded on the console's
+  prometheus_url: http://localhost:9090  # Monitoring tab (Stage 10); local to the laptop only
+  alertmanager_url: http://localhost:9093
 
 guidance:                        # Stage 6 health guidance search
   docs_dir: guidance_docs

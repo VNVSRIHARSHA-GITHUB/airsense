@@ -20,3 +20,6 @@ worklog.md
 data/qdrant/
 logs/
 data/monitoring/forecasts/
+# monitor results, rewritten every hour (Stage 10)
+data/monitoring/reports/
+data/monitoring/retrain_trigger.json

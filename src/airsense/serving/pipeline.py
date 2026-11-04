@@ -8,7 +8,10 @@ except `dvc status`, which only compares checksums:
   - gate_report.json, registry.json   the current model's checks and promotion;
   - data/raw/live/datagov/<date>/<HHMM>.csv   live collection health (names = UTC);
   - logs/*.log          recent warnings and errors;
-  - logs/airflow_runs.json  the last run of each Airflow DAG (written by the DAGs).
+  - logs/airflow_runs.json  the last run of each Airflow DAG (written by the DAGs);
+  - logs/alerts/alerts.json  alerts received from Alertmanager (Stage 10);
+  - data/monitoring/reports/*.json  forecast vs actual, drift, retrain decision
+    (written by airsense_monitor, Stage 10).
 The result is cached for `pipeline_cache_seconds`, so a console refresh does not
 run `dvc status` again.
 """
@@ -39,6 +42,18 @@ LOG_LINE = re.compile(
     r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\S*\s+(WARNING|ERROR|CRITICAL)\s+(.*)$"
 )
 SKIP_KEYS = ("columns", "category_codes")  # long lists, not useful on the console
+MONITORING = Path("data/monitoring")
+EVAL_KEYS = (
+    "evaluated_at_utc",
+    "window_days",
+    "test_mae",
+    "limit_mae",
+    "min_pairs",
+    "overall",
+    "error_high",
+    "by_horizon",
+    "daily",
+)
 
 
 # ---------- DVC ----------
@@ -309,6 +324,45 @@ def workflows(runs: dict | None, now: datetime, airflow_url: str | None) -> list
     return sorted(out, key=lambda w: w["dag_id"])
 
 
+# ---------- monitoring (Stage 10) ----------
+
+
+def _age_hours(ts: str | None, now: datetime) -> float | None:
+    try:
+        return round((now - datetime.fromisoformat(ts)).total_seconds() / 3600, 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def monitoring_summary(root: Path, now: datetime, cfg: dict) -> dict:
+    """The monitor's latest reports, trimmed for the console; None where missing.
+
+    Each report gets `age_hours`, so the console can tell a current result from
+    one left over while Airflow was stopped.
+    """
+    reports = root / MONITORING / "reports"
+    ev = read_json(reports / "evaluation.json")
+    dr = read_json(reports / "drift.json")
+    dec = read_json(reports / "retrain_decision.json")
+    trig = read_json(root / MONITORING / "retrain_trigger.json")
+    if ev:
+        ev = {k: ev.get(k) for k in EVAL_KEYS}
+        ev["age_hours"] = _age_hours(ev["evaluated_at_utc"], now)
+    if dr:
+        dr = {**dr, "age_hours": _age_hours(dr.get("checked_at_utc"), now)}
+    if dec:
+        dec = {**dec, "age_hours": _age_hours(dec.get("decided_at_utc"), now)}
+    return {
+        "evaluation": ev,
+        "drift": dr,
+        "decision": dec,
+        "last_trigger": trig,
+        "auto_retrain": cfg.get("auto_retrain"),
+        "cooldown_days": cfg.get("retrain_cooldown_days"),
+        "drift_hour_ist": cfg.get("drift_hour_ist"),
+    }
+
+
 # ---------- the service ----------
 
 
@@ -323,6 +377,8 @@ class PipelineStatus:
         status_fn: Callable[[Path, float], dict] = dvc_status,
         model_info: dict | None = None,
         airflow_url: str | None = None,
+        monitoring_cfg: dict | None = None,
+        links: dict | None = None,
     ):
         self.root = root
         self.cache_seconds = cache_seconds
@@ -330,6 +386,8 @@ class PipelineStatus:
         self.status_fn = status_fn
         self.model_info = model_info or {}
         self.airflow_url = airflow_url
+        self.monitoring_cfg = monitoring_cfg or {}
+        self.links = links or {}  # Grafana, Prometheus, Alertmanager (laptop only)
         self._cache: dict | None = None
         self._at = -1e9
         self._lock = threading.Lock()
@@ -397,4 +455,6 @@ class PipelineStatus:
                 read_json(self.root / AIRFLOW_RUNS), now, self.airflow_url
             ),
             "alerts": alerts_summary(self.root / ALERTS_FILE),  # from Alertmanager
+            "monitoring": monitoring_summary(self.root, now, self.monitoring_cfg),
+            "monitoring_links": self.links,
         }
