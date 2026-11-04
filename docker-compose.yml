@@ -84,9 +84,15 @@ services:
       REDIS_CONNECTION: redis:6379
     volumes:
       - ${PWD}:${PWD}:ro
-      # the only places the backend writes: DVC's scratch folder (dvc status for
-      # the console) and the saved Open-Meteo forecasts (fallback weather)
-      - ${PWD}/.dvc/tmp:${PWD}/.dvc/tmp
+      # DVC's scratch folder for `dvc status` (console): the backend's OWN empty
+      # copy in memory, never the laptop's .dvc/tmp. Sharing it broke retrains:
+      # inside the container the laptop's process IDs do not exist, so DVC took
+      # the running `dvc repro` for a killed process and removed its lock entry.
+      - type: tmpfs
+        target: ${PWD}/.dvc/tmp
+        tmpfs: {mode: 01777}
+      # the other places the backend writes: the saved Open-Meteo forecasts
+      # (fallback weather) and the alerts
       - ${PWD}/data/raw/live/openmeteo:${PWD}/data/raw/live/openmeteo
       # alerts from Alertmanager (Stage 10); create it first: mkdir -p logs/alerts
       - ${PWD}/logs/alerts:${PWD}/logs/alerts
