@@ -183,9 +183,9 @@ stages:
     deps:
     - path: data/raw/live/datagov
       hash: md5
-      md5: befdf87386819f5d2222791ccf400580.dir
-      size: 20535877
-      nfiles: 267
+      md5: 6f5a2778b879c84ee4d1191d9ea8ac57.dir
+      size: 20782739
+      nfiles: 270
     - path: src/airsense/processing/process_live.py
       hash: md5
       md5: 32f92b64b052f4d70efd450cf70b57a7
@@ -255,17 +255,17 @@ stages:
     outs:
     - path: data/interim/process_live_metrics.json
       hash: md5
-      md5: bd469af3d29b1acca7a23b12b0bb5bc3
+      md5: 65232fcf37ef25cfe55cebd83e7328e6
       size: 2931
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: cb37a83f792e6724368f9c1eb124f09a.dir
-      size: 88820
+      md5: f4268fcbc709637b6577c9251d52c8fb.dir
+      size: 89000
       nfiles: 14
     - path: data/processed/live_station_hourly
       hash: md5
-      md5: 9b8f7a96b78531b9c43b479ef38a49d4.dir
-      size: 216598
+      md5: bbb3428fd842f1f06ce309f86fed4345.dir
+      size: 217828
       nfiles: 14
   validate_processed:
     cmd: python src/airsense/validation/validate_processed.py
@@ -277,8 +277,8 @@ stages:
       nfiles: 534
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: cb37a83f792e6724368f9c1eb124f09a.dir
-      size: 88820
+      md5: f4268fcbc709637b6577c9251d52c8fb.dir
+      size: 89000
       nfiles: 14
     - path: src/airsense/validation/validate_processed.py
       hash: md5
@@ -352,7 +352,7 @@ stages:
     outs:
     - path: data/interim/processed_validation.json
       hash: md5
-      md5: c10f8fbc4c9784b02258eaf3037ee786
+      md5: d233b34da2e289fe8942e3c054212cd6
       size: 1252
   fetch_weather:
     cmd: python src/airsense/ingestion/fetch_weather_history.py
@@ -595,8 +595,8 @@ stages:
     deps:
     - path: data/processed/live_city_hourly
       hash: md5
-      md5: cb37a83f792e6724368f9c1eb124f09a.dir
-      size: 88820
+      md5: f4268fcbc709637b6577c9251d52c8fb.dir
+      size: 89000
       nfiles: 14
     - path: src/airsense/features/build_features.py
       hash: md5
@@ -621,21 +621,21 @@ stages:
     outs:
     - path: data/features/pm_live
       hash: md5
-      md5: 72c7d8f8f977157b3f42ef03d5c3e945.dir
-      size: 304719
+      md5: d9bfe3c034b0a8d791b0af472b12fcbc.dir
+      size: 305402
       nfiles: 14
     - path: data/interim/features_live_metrics.json
       hash: md5
-      md5: c908636142564023d6948bea39e67aa2
-      size: 743
+      md5: cce3d96b41bea29337ef632c04e6758a
+      size: 745
   feast_online:
     cmd: feast -c feature_repo apply && python 
       src/airsense/features/feast_online.py
     deps:
     - path: data/features/pm_live
       hash: md5
-      md5: 72c7d8f8f977157b3f42ef03d5c3e945.dir
-      size: 304719
+      md5: d9bfe3c034b0a8d791b0af472b12fcbc.dir
+      size: 305402
       nfiles: 14
     - path: feature_repo/feature_store.yaml
       hash: md5
@@ -670,8 +670,8 @@ stages:
     outs:
     - path: data/interim/feast_online_metrics.json
       hash: md5
-      md5: 18f901ea31f24831e78825eb365ff9f0
-      size: 663
+      md5: 4403154ca570736ed149169808368181
+      size: 662
   build_training:
     cmd: feast -c feature_repo apply && python 
       src/airsense/features/build_training.py
@@ -792,8 +792,8 @@ stages:
       nfiles: 24
     - path: data/training_live
       hash: md5
-      md5: 48f85e7388ccb335adc597e7ed32af19.dir
-      size: 2556402
+      md5: 92badb1e5bb8ca30fad06ad57b816d39.dir
+      size: 2607905
       nfiles: 24
     - path: src/airsense/training/train.py
       hash: md5
@@ -891,24 +891,24 @@ stages:
     outs:
     - path: data/interim/train_metrics.json
       hash: md5
-      md5: 823a0064fdbd4f516a5f0764cc0901b3
-      size: 25268
+      md5: 0a92a0d08d45d9c24e35c8a82acd0eae
+      size: 25266
     - path: models/lgbm_model.txt
       hash: md5
       md5: d01d1544811775da61c165e40ec89628
       size: 2006850
     - path: reports/train
       hash: md5
-      md5: f5e3adcab1789d9733360352350ebf0f.dir
-      size: 228268
+      md5: 31356a454fb3266cd5146cb65223ed6d.dir
+      size: 227563
       nfiles: 3
   gate:
     cmd: python src/airsense/training/gate.py
     deps:
     - path: data/interim/train_metrics.json
       hash: md5
-      md5: 823a0064fdbd4f516a5f0764cc0901b3
-      size: 25268
+      md5: 0a92a0d08d45d9c24e35c8a82acd0eae
+      size: 25266
     - path: src/airsense/training/gate.py
       hash: md5
       md5: 39a1d8d30744805fb6473a5925eee00c
@@ -927,19 +927,19 @@ stages:
     outs:
     - path: data/interim/gate_report.json
       hash: md5
-      md5: 71b588ccea389277d73551455a5131d9
-      size: 1548
+      md5: 01ea77ed6ee3828fadd3c21ff367b088
+      size: 1546
   register:
     cmd: python src/airsense/training/register.py
     deps:
     - path: data/interim/gate_report.json
       hash: md5
-      md5: 71b588ccea389277d73551455a5131d9
-      size: 1548
+      md5: 01ea77ed6ee3828fadd3c21ff367b088
+      size: 1546
     - path: data/interim/train_metrics.json
       hash: md5
-      md5: 823a0064fdbd4f516a5f0764cc0901b3
-      size: 25268
+      md5: 0a92a0d08d45d9c24e35c8a82acd0eae
+      size: 25266
     - path: models/lgbm_model.txt
       hash: md5
       md5: d01d1544811775da61c165e40ec89628
@@ -956,7 +956,7 @@ stages:
     outs:
     - path: data/interim/registry.json
       hash: md5
-      md5: d8d188b37ed61905f84eb3a574937121
+      md5: 94a7412a042ba5a82e5a92b726ea527d
       size: 463
   guidance_index:
     cmd: python src/airsense/guidance/index.py
@@ -987,14 +987,14 @@ stages:
     deps:
     - path: data/features/pm_live
       hash: md5
-      md5: 5e9eff49d1734678abf6bb2cff4c7767.dir
-      size: 302642
+      md5: d9bfe3c034b0a8d791b0af472b12fcbc.dir
+      size: 305402
       nfiles: 14
     - path: data/raw/live/openmeteo
       hash: md5
-      md5: 90a69f190c5857ae27c06f30204d1d99.dir
-      size: 6290755
-      nfiles: 39
+      md5: d0752f07e1281c35a2c5f9a9484f5bbe.dir
+      size: 6773922
+      nfiles: 42
     - path: src/airsense/features/build_features.py
       hash: md5
       md5: ef363b68e0e0fb38bba60149d36b8d36
@@ -1085,10 +1085,10 @@ stages:
     outs:
     - path: data/interim/training_live_metrics.json
       hash: md5
-      md5: 1637822942f330aa41f0eb1413ad38b7
+      md5: 6d2e2071841d994c5c99bdd1e980636e
       size: 653
     - path: data/training_live
       hash: md5
-      md5: 48f85e7388ccb335adc597e7ed32af19.dir
-      size: 2556402
+      md5: 92badb1e5bb8ca30fad06ad57b816d39.dir
+      size: 2607905
       nfiles: 24
