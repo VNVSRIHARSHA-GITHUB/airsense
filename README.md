@@ -142,6 +142,7 @@ Failure tests (each container stopped, alerts, automatic retraining):
 | Document | Contents |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | components, data flow, deployment, workflows, monitoring, failure behaviour, running it, limitations |
+| [docs/hld.md](docs/hld.md) | design choices: what was chosen, the alternatives and why |
 | [docs/lld.md](docs/lld.md) | API contract, request flow, model input contract, error handling, metrics, configuration, tests |
 | [docs/user_manual.md](docs/user_manual.md) | how to use the Forecast page and the Pipeline console; what to do when an alert fires |
 | [docs/data_sources.md](docs/data_sources.md) | sources, formats, licences, processed outputs |
