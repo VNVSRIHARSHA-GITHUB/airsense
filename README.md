@@ -134,7 +134,7 @@ Failure tests (each container stopped, alerts, automatic retraining):
 | Training data | 14.3 million rows (city × hour × 24 horizons), 2018–2023, 40 inputs |
 | Test error (Oct 2022 – Mar 2023) | MAE **6.80 µg/m³**, against 8.59 for "no change": **21 %** better |
 | AQI category right | about 83 % of test forecasts |
-| Live check (3 days to 5 November 2026) | model 10.4 vs "no change" 11.7 µg/m³ over 798 forecast/actual pairs (10 % better) |
+| Live check (3 days to 5 November 2026) | model 9.8 vs "no change" 11.1 µg/m³ over 1,106 forecast/actual pairs (11 % better) |
 | Failure tests | model server, backend and Airflow outages each raised the right alert and recovered; drift started a retrain without a person |
 
 ## Documentation

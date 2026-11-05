@@ -106,6 +106,8 @@ The details appear directly below, in the same order as on a computer; the advic
 
 ![No forecast for a city](images/manual_no_forecast.png)
 
+*In this example the limit was lowered to 1 hour for a test; normally it is 4 hours.*
+
 AirSense only forecasts from **recent** measurements (at most 4 hours old). If a city's latest measurement is older, or missing, the page says **"No forecast for … right now"** and gives:
 
 - the reason (for example, *Latest PM2.5 value is 23.9 h old*);
