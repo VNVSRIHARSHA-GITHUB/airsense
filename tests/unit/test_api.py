@@ -34,6 +34,7 @@ class FakeService:
                 "region": "North",
                 "pm25_24h": 180.0,
                 "aqi_category": "Very Poor",
+                "time_utc": "2026-11-05T04:00:00+00:00",
                 "age_hours": 2.4,
             }
         ]
@@ -140,7 +141,8 @@ def test_invalid_group_or_category_is_rejected():
 
 def test_other_endpoints():
     assert client.get("/health").json()["status"] == "ok"
-    assert client.get("/cities").json()[0]["city"] == "Delhi"
+    first = client.get("/cities").json()[0]
+    assert first["city"] == "Delhi" and first["time_utc"].startswith("2026-11-05T04")
     assert client.get("/model").json()["version"] == "1"
     assert client.get("/guidance", params={"category": "Poor"}).json()[0]["text"]
 

@@ -101,6 +101,7 @@ class CityStatus(BaseModel):
     region: str
     pm25_24h: float | None
     aqi_category: str | None
+    time_utc: str | None = None
     age_hours: float | None
 
 

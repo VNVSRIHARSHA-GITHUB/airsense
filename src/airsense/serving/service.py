@@ -426,6 +426,7 @@ class ForecastService:
                     "region": v["region"],
                     "pm25_24h": None if value is None else round(value, 1),
                     "aqi_category": aqi_name(value),
+                    "time_utc": None if t is None else t.isoformat(),
                     "age_hours": None
                     if t is None
                     else round((now - t).total_seconds() / 3600, 1),

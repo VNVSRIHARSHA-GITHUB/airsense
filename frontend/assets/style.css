@@ -113,6 +113,7 @@ button.ghost { display: inline-flex; align-items: center; gap: 6px; }
 .section-h { font-size: 1.15rem; font-weight: 700; font-stretch: 90%; margin: 0; }
 .section-note { margin: 0; color: var(--muted); font-size: 0.88rem; }
 .hint { color: var(--muted); margin: 0 0 12px; max-width: 78ch; font-size: 0.92rem; }
+#aqi-rows td:first-child { white-space: nowrap; }  /* colour dot and category on one line */
 .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; vertical-align: -1px; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .field { display: grid; gap: 4px; font-size: 0.9rem; color: var(--muted); margin-bottom: 16px; }

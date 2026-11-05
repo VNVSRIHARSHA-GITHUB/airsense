@@ -85,6 +85,17 @@ def test_normal_forecast():
     assert out["guidance"]["category"] == "Poor"
 
 
+def test_cities_overview_gives_the_exact_measurement_time():
+    """The pages show this time; rebuilding it from the rounded age drifted (04:01)."""
+    row = next(
+        r
+        for r in make_service({"pm25_24h": 100.0}).cities_overview()
+        if r["city"] == "Delhi"
+    )
+    assert row["time_utc"] == T.isoformat()
+    assert row["age_hours"] == 2.0
+
+
 def test_stale_or_missing_current_value_gives_no_forecast():
     stale = make_service({"pm25_24h": 100.0}, t=T - pd.offsets.Hour(5))
     assert "h old" in stale.forecast("Delhi")["reason"]

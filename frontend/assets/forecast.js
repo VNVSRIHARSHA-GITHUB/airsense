@@ -56,17 +56,17 @@ function renderCities() {
 function renderCitySelect() {
   const sel = document.getElementById("city-select");
   fill(sel, ...ranked().map((c) =>
-    el("option", { value: c.city }, hasValue(c) ? `${c.city}: ${Math.round(c.pm25_24h)}, ${c.aqi_category}` : `${c.city}: no recent data`)));
+    el("option", { value: c.city }, hasValue(c) ? `${c.city}: ${Math.round(c.pm25_24h)} µg/m³, ${c.aqi_category}` : `${c.city}: no recent data`)));
   sel.value = state.city;
 }
 
 async function loadCities() {
   state.cities = await getJSON("/cities");
-  const fresh = state.cities.filter((c) => c.age_hours != null);
-  const newest = fresh.length ? Math.min(...fresh.map((c) => c.age_hours)) : null;
-  document.getElementById("asof").textContent = newest == null
-    ? "No recent measurements"
-    : `Latest measurement ${fmtWhenAgo(new Date(Date.now() - newest * 3600 * 1000))}`;
+  // The exact hour of the newest value (the rounded age would drift by minutes).
+  const times = state.cities.filter((c) => c.time_utc).map((c) => new Date(c.time_utc).getTime());
+  document.getElementById("asof").textContent = times.length
+    ? `Latest measurement ${fmtWhenAgo(new Date(Math.max(...times)))}`
+    : "No recent measurements";
   if (!state.city) {
     const first = ranked().find(hasValue) || state.cities[0];
     state.city = first ? first.city : null;
@@ -410,6 +410,8 @@ const forecastDecor = {
   id: "forecastDecor",
   beforeDraw(chart) {
     const { ctx, chartArea: a, scales: { y } } = chart;
+    const pts = chart.getDatasetMeta(0).data;
+    const lineY = pts.length ? pts[pts.length - 1].y : null;  // the line at the right edge
     const alpha = cssVar("--band-alpha") || "22";
     let low = 0;
     ctx.save();
@@ -424,7 +426,10 @@ const forecastDecor = {
           ctx.fillStyle = cssVar("--muted");
           ctx.font = `600 11px ${cssVar("--font")}`;
           ctx.textAlign = "right";
-          ctx.fillText(band.name, a.right - 6, y2 + 13);
+          // top-right of the band, or bottom-right if the line runs there
+          const topY = y2 + 13, bottomY = y1 - 5;
+          const far = (ty) => (lineY == null ? Infinity : Math.abs(ty - 4 - lineY));
+          ctx.fillText(band.name, a.right - 6, far(topY) >= far(bottomY) ? topY : bottomY);
         }
       }
       low = band.max;
@@ -475,6 +480,10 @@ const forecastDecor = {
       // keep the label inside the chart at the left and right edges
       const half = ctx.measureText(text).width / 2;
       const x = Math.min(a.right - half - 2, Math.max(a.left + half + 2, p.x));
+      ctx.lineJoin = "round";
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = cssVar("--paper");  // halo: readable where the line crosses
+      ctx.strokeText(text, x, y);
       ctx.fillStyle = colour;
       ctx.fillText(text, x, y);
     };
@@ -520,12 +529,17 @@ function drawChart(canvas, f) {
   const lo = Math.min(...values);
   const hi = Math.max(...values);
   const pad = Math.max(8, (hi - lo) * 0.35);
-  const step = canvas.parentElement.clientWidth < 600 ? 6 : 3;  // fewer labels on a phone
-  const ticks = series.map((s, i) => {
-    if (i % step !== 0) return "";
-    const newDay = i === 0 || fmtDay(s.time) !== fmtDay(series[i - step].time);
-    return newDay ? [fmtClock(s.time), fmtDay(s.time)] : fmtClock(s.time);
-  });
+  // Time labels every 3 hours, every 6 on a narrow chart (phone); recomputed when
+  // the chart is resized (phone rotated, window narrowed) so they never crowd.
+  const tickLabels = (width) => {
+    const step = width < 600 ? 6 : 3;
+    return series.map((s, i) => {
+      if (i % step !== 0) return "";
+      const newDay = i === 0 || fmtDay(s.time) !== fmtDay(series[i - step].time);
+      return newDay ? [fmtClock(s.time), fmtDay(s.time)] : fmtClock(s.time);
+    });
+  };
+  let ticks = tickLabels(canvas.parentElement.clientWidth);
   const ink = cssVar("--ink");
   const points = (fn) => series.map((s, i) => fn(s, i));
   const peak = 1 + values.slice(1).indexOf(Math.max(...values.slice(1)));
@@ -549,6 +563,7 @@ function drawChart(canvas, f) {
     },
     options: {
       maintainAspectRatio: false, animation: false,
+      onResize: (chart, size) => { ticks = tickLabels(size.width); },
       interaction: { mode: "index", intersect: false },
       layout: { padding: { top: BOX_H + 30, right: 10 } },
       scales: {
@@ -600,7 +615,7 @@ function adviceTab(f) {
   return el("div", { class: "advice", id: "advice" },
     chips,
     el("p", { class: "advice-text" }, g.text),
-    el("p", { class: "sources" }, `For ${groupText(g.group)}, at ${g.category} levels (${g.pm25_range}). Based on: ${g.sources.join("; ")}.`));
+    el("p", { class: "sources" }, `For ${groupText(g.group)}, at ${g.category} levels: ${g.pm25_range}. Based on: ${g.sources.join("; ")}.`));
 }
 
 function factorRow(name, v, maxAbs, extra) {
@@ -733,9 +748,16 @@ async function selectCity(city, scroll = false) {
   if (scroll) document.getElementById("detail").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function setGroup(group) {
+async function setGroup(group) {
   state.group = group;
-  loadForecast({ quiet: true });
+  // The reload redraws the details box, which replaces the focused choice:
+  // put the keyboard focus back on the chosen group (a keyboard user keeps going).
+  const keyboard = document.activeElement && document.activeElement.name === "group";
+  await loadForecast({ quiet: true });
+  if (keyboard) {
+    const chosen = document.querySelector(`input[name="group"][value="${group}"]`);
+    if (chosen) chosen.focus({ preventScroll: true });
+  }
 }
 
 async function refreshAll() {
