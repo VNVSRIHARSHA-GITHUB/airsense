@@ -78,30 +78,103 @@ runs, alerts), `mlruns/` and `mlflow.db` (MLflow), `feature_repo/data/` (Feast r
 
 ## Quick start
 
-**Needs:** Ubuntu (or another Linux), Python 3.12, Docker with Compose, about 15 GB
-free disk, a free [data.gov.in](https://data.gov.in) API key and a Kaggle account.
+Set up once on a new machine, in this order. **Every command runs in a terminal at the
+root of the repository** (the folder with `dvc.yaml` and `docker-compose.yml`), with
+the project environment active (`source .venv/bin/activate`), unless the step says
+otherwise.
+
+**Needs** (tested on Ubuntu 26.04 with OpenJDK 17): Linux with about 15 GB free disk;
+Python 3.12; Java 17 for Spark (`sudo apt install openjdk-17-jre-headless`); Docker with the Compose
+plugin; a free [data.gov.in](https://data.gov.in) API key; a Kaggle account with an API
+token in `~/.kaggle/kaggle.json` (Kaggle → Settings → API → Create New Token, then
+`chmod 600 ~/.kaggle/kaggle.json`).
+
+**1. Get the code** (in the folder where the project should live)
 
 ```bash
-# 1. environment
-python3.12 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt && pip install -e .
-git config core.hooksPath .githooks            # lint, format and tests before each commit
-cp .env.example .env                           # then fill in DATA_GOV_IN_API_KEY and GRAFANA_ADMIN_PASSWORD
+git clone <repository URL> airsense && cd airsense
+```
+Downloads the repository and enters its root; all later steps run from here.
 
-# 2. data and model (history from Kaggle; everything else is built by DVC)
+**2. Create the Python environment** (≈ 5 min)
+
+```bash
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+pip install -e .
+git config core.hooksPath .githooks
+```
+Creates an isolated environment in `.venv` with the exact tested versions; the extra
+index provides the CPU-only PyTorch (no GPU needed). `pip install -e .` makes the
+`airsense` package importable by the pipeline, the tests and Airflow.
+`core.hooksPath` turns on the pre-commit checks (lint, format, quick tests).
+
+**3. Add your keys** (≈ 1 min)
+
+```bash
+cp .env.example .env
+nano .env        # fill in DATA_GOV_IN_API_KEY and GRAFANA_ADMIN_PASSWORD
+```
+`.env` holds the secrets and is never committed (it is in `.gitignore`).
+
+**4. Download the history and a first live snapshot** (≈ 5 min)
+
+```bash
 kaggle datasets download -d abhisheksjha/time-series-air-quality-data-of-india-2010-2023 \
     -p data/raw/cpcb --unzip
-python src/airsense/ingestion/datagov_client.py   # a first live snapshot (Airflow collects the rest)
-docker compose up -d redis qdrant              # stores the pipeline fills (online features, advice)
-dvc repro                                      # validate, process, features, train, gate, register
+python src/airsense/ingestion/datagov_client.py
+```
+The first command puts the CPCB station history (2010–2023, 1.6 GB) in
+`data/raw/cpcb/`. The second saves one snapshot of the live CPCB feed in
+`data/raw/live/datagov/`; the pipeline needs at least one, and Airflow collects the
+rest every 30 minutes.
 
-# 3. serving and monitoring
+**5. Build the data and the model** (≈ 20–30 min the first time)
+
+```bash
+docker compose up -d redis qdrant
+dvc repro
+```
+Starts the two stores the pipeline writes to (Redis: online features; Qdrant: the
+health advice), then runs all 15 pipeline steps in order: validate, process (Spark),
+weather, features, training table, train, quality gate, register the champion model,
+online features, advice index. When it finishes without an error, `dvc status`
+lists only the steps that run every time.
+
+**6. Start the web service and monitoring** (≈ 8 min the first time, ≈ 1 min later)
+
+```bash
 mkdir -p logs/alerts
 AIRSENSE_TAG=$(git rev-parse --short HEAD) docker compose up -d --build
+docker compose ps
+```
+Builds the application images (tagged with the Git commit) and starts all 8
+containers: web page (nginx), backend, model server, Redis, Qdrant, Prometheus,
+Alertmanager, Grafana. `docker compose ps` should show all of them `healthy` after
+about a minute. `logs/alerts` is where the backend keeps the alerts.
 
-# 4. scheduler (own terminal; installed once, see docs/architecture.md §8)
+**7. Start the scheduler** (in its **own terminal**, kept open)
+
+Once, install Airflow in its own environment (outside the project, so its packages
+cannot change the tested ones; needs [uv](https://docs.astral.sh/uv/), `pip install uv`):
+
+```bash
+uv venv ~/airflow-venv --python 3.12
+uv pip install --python ~/airflow-venv/bin/python "apache-airflow==3.3.2" \
+  --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-3.3.2/constraints-3.12.txt"
+```
+
+Then, every time (from the repository root):
+
+```bash
 bash airflow/start.sh
 ```
+Starts Airflow at http://localhost:8081 (user `admin`; the password is printed in this
+terminal at the first start and kept in `~/airflow-airsense/`). In the Airflow UI switch on the four workflows (toggle next to each name):
+collection every 30 min, monitoring hourly, retraining weekly, housekeeping daily.
+Closing this terminal stops Airflow.
+
+**8. Open the system**
 
 | Open | Address |
 |---|---|
@@ -111,8 +184,11 @@ bash airflow/start.sh
 | Airflow | http://localhost:8081 |
 | Grafana / Prometheus / Alertmanager | http://localhost:3000 / :9090 / :9093 |
 
-Everyday operation, failure handling and recovery: [docs/architecture.md](docs/architecture.md) §7–8
-and the [user manual](docs/user_manual.md).
+**Later, every day:** `docker compose up -d` (if the containers are not running) and
+`bash airflow/start.sh` in its own terminal; the rest is automatic. To stop:
+`docker compose down` (data is kept) and Ctrl+C in the Airflow terminal.
+Operation, failure handling and recovery: [docs/architecture.md](docs/architecture.md)
+§7–8 and the [user manual](docs/user_manual.md).
 
 ## Tests
 
