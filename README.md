@@ -46,7 +46,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Quality gate | five checks against baselines | `src/airsense/training/gate.py`, `params.yaml` |
 | Explainability | SHAP (LightGBM contributions) | `src/airsense/serving/explain.py` |
 | Retrieval for advice | sentence-transformers + Qdrant | `src/airsense/guidance/`, `guidance_docs/` |
-| Tests and pre-commit | pytest (160 tests), ruff, promtool | `tests/`, `.githooks/pre-commit` |
+| Tests and pre-commit | pytest (162 tests), ruff, promtool | `tests/`, `.githooks/pre-commit` |
 | Packaging and serving | Docker Compose (8 containers), FastAPI, MLflow model server, nginx | `docker-compose.yml`, `docker/`, `backend/` |
 | Orchestration | Apache Airflow 3.3 (4 workflows) | `airflow/dags/` |
 | Monitoring and alerting | Prometheus (13 alert rules), Alertmanager, Grafana | `docker/monitoring/`, `src/airsense/serving/metrics.py` |
@@ -117,13 +117,13 @@ and the [user manual](docs/user_manual.md).
 ## Tests
 
 ```bash
-pytest -m "not spark"          # 151 quick tests (also run by the pre-commit hook)
+pytest -m "not spark"          # 153 quick tests (also run by the pre-commit hook)
 pytest -m spark                # 9 tests with a local Spark session
 docker run --rm -v "$PWD":/w -w /w --entrypoint promtool prom/prometheus:v3.5.0 \
     test rules tests/monitoring/alert_rules_test.yml   # alert rules, 7 scenarios
 ```
 
-Manual checks of both web pages: [docs/ui_test_checklist.md](docs/ui_test_checklist.md).
+Test plan, test cases and results: [docs/test_plan.md](docs/test_plan.md); manual checks of both web pages: [docs/ui_test_checklist.md](docs/ui_test_checklist.md).
 Failure tests (each container stopped, alerts, automatic retraining):
 [docs/architecture.md](docs/architecture.md) §7.
 
@@ -134,7 +134,7 @@ Failure tests (each container stopped, alerts, automatic retraining):
 | Training data | 14.3 million rows (city × hour × 24 horizons), 2018–2023, 40 inputs |
 | Test error (Oct 2022 – Mar 2023) | MAE **6.80 µg/m³**, against 8.59 for "no change": **21 %** better |
 | AQI category right | about 83 % of test forecasts |
-| Live check (first week of November 2026) | model 13.3 vs "no change" 14.4 µg/m³ over 364 forecast/actual pairs (8 % better) |
+| Live check (3 days to 5 November 2026) | model 10.4 vs "no change" 11.7 µg/m³ over 798 forecast/actual pairs (10 % better) |
 | Failure tests | model server, backend and Airflow outages each raised the right alert and recovered; drift started a retrain without a person |
 
 ## Documentation
@@ -147,7 +147,8 @@ Failure tests (each container stopped, alerts, automatic retraining):
 | [docs/user_manual.md](docs/user_manual.md) | how to use the Forecast page and the Pipeline console; what to do when an alert fires |
 | [docs/data_sources.md](docs/data_sources.md) | sources, formats, licences, processed outputs |
 | [docs/features.md](docs/features.md) | every model input and how it is computed |
-| [docs/ui_test_checklist.md](docs/ui_test_checklist.md) | manual checks of the web pages |
+| [docs/test_plan.md](docs/test_plan.md) | test plan: levels, tools, pass criteria; all test cases and the results of the test round |
+| [docs/ui_test_checklist.md](docs/ui_test_checklist.md) | manual checks of the web pages, with results |
 
 ## Limitations
 
