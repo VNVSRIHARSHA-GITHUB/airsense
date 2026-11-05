@@ -49,7 +49,7 @@ no running services and no model download.
 **Entry criteria for a test round:** containers up and healthy (`docker compose ps`),
 Airflow running, live features less than 4 hours old, at least 5 GB free disk.
 
-**Exit criteria:** all automated tests pass; every manual check passed, or failed and
+**Acceptance criteria** (a round passes when): all automated tests pass; every manual check passed, or failed and
 was fixed and re-tested; no open defect that affects users or operation.
 
 ---
@@ -72,7 +72,7 @@ was fixed and re-tested; no open defect that affects users or operation.
 | Training | `test_train.py` | 13 | time split with gaps (no overlap across a boundary), baselines, metrics, live rows only in the training split, repeat factor, model signature with float inputs |
 | | `test_gate.py` | 7 | each of the 5 gate checks passes and fails at its limit; empty forecasts counted correctly |
 | Serving | `test_serving.py` | 7 | **serving rows equal training rows** for the same moment; missing inputs; AQI category edges; explanation names and totals |
-| | `test_service.py` | 15 | normal forecast; stale, missing or NaN current value gives no forecast; unknown city; weather fallback; model server down; guidance failure keeps the forecast; exact measurement time in the city list |
+| | `test_service.py` | 16 | normal forecast; stale, missing or NaN current value gives no forecast; unknown city; weather fallback; model server down; guidance failure keeps the forecast; exact measurement time in the city list; health: store reachable vs down |
 | | `test_api.py` | 9 | every endpoint and response schema; 404 unknown city; 422 invalid value; 503 when a dependency is down (never 500) |
 | | `test_guidance.py`, `test_settings.py` | 6 | all 18 advice texts parsed with sources; search returns the right category and group; settings and environment overrides |
 | Console and monitoring | `test_pipeline.py` | 11 | steps and graph from `dvc.yaml`, status from `dvc status`, collection gaps (including a stopped collector), Airflow runs, monitoring summary |
@@ -189,7 +189,7 @@ at the time and are covered by the tests listed in §3 and §4.
 | Monitoring failure tests | 4 planned + 1 found | all pass; the unplanned one led to a new alert |
 | User-interface checks | 39 | 37 passed first time, 2 fixed and re-tested |
 
-**Status:** exit criteria met; no open defect.
+**Status:** acceptance criteria met; no open defect.
 
 ---
 
@@ -198,6 +198,8 @@ at the time and are covered by the tests listed in §3 and §4.
 ```bash
 pytest -m "not spark"          # quick unit tests (also run by the pre-commit hook)
 pytest -m spark                # unit tests with a local Spark session
+MLFLOW_TRACKING_URI=sqlite:///mlflow.db mlflow run . -e tests --env-manager local
+                               # the same quick tests as an MLflow Project run
 docker run --rm -v "$PWD":/w -w /w --entrypoint promtool prom/prometheus:v3.5.0 \
     test rules tests/monitoring/alert_rules_test.yml
 curl -s http://127.0.0.1:8000/health    # integration: every check true

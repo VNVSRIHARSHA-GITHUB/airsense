@@ -1,6 +1,8 @@
 """ForecastService logic with fake inputs: stale data, missing values, model
 server down, negative forecasts, guidance failure (Stage 6)."""
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -94,6 +96,21 @@ def test_cities_overview_gives_the_exact_measurement_time():
     )
     assert row["time_utc"] == T.isoformat()
     assert row["age_hours"] == 2.0
+
+
+def test_health_store_up_even_without_a_row_for_the_first_city():
+    """Reachable store, no recent Delhi row: not an outage (no false LiveDataStoreDown)."""
+    s = make_service({}, t=None)
+    champion = SimpleNamespace(version="1")
+    s.mlflow_client = SimpleNamespace(get_model_version_by_alias=lambda n, a: champion)
+    h = s.health()
+    assert h["checks"]["feature_store"] is True and h["status"] == "ok"
+
+    def down(city):
+        raise ConnectionError("redis down")
+
+    s.live_features = down
+    assert s.health()["checks"]["feature_store"] is False
 
 
 def test_stale_or_missing_current_value_gives_no_forecast():

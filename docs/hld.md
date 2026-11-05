@@ -9,6 +9,24 @@ definitions and input/output formats are in [`lld.md`](lld.md).
 Each section starts with a short explanation, followed by a table:
 **Choice** (what was built), **Alternatives considered**, **Why**.
 
+## High-level design diagram
+
+![AirSense high-level design](images/hld.png)
+
+1. **Data sources:** the official CPCB measurements (history and live feed) and
+   Open-Meteo weather.
+2. **Pipeline:** DVC steps on the laptop, scheduled by Airflow, turn the data into
+   validated features and a trained model; the quality gate and the registry decide
+   which model serves (the *champion*).
+3. **Serving:** the web pages talk to the backend only through its REST API; the
+   backend reads the newest features (Redis) and the advice texts (Qdrant) and asks
+   the model server for the forecast.
+4. **Monitoring:** Prometheus, Alertmanager and Grafana watch the service; an hourly
+   workflow compares served forecasts with what was measured and checks the inputs
+   for drift. A high error or drift starts a retrain: the loop back to step 2.
+
+The detailed component diagram is in [`architecture.md`](architecture.md).
+
 ---
 
 ## 1. Goal and constraints
@@ -26,6 +44,17 @@ its own health and accuracy.
 | One laptop: CPU only, 14 GB RAM, about 80 GB disk | Light models, local-mode tools, memory limits on every container, careful disk use |
 | No cloud services allowed | Collection, storage, CI, scheduling and monitoring all run on the laptop; backups are on the same disk |
 | The live feed has no history | Every hour not collected is lost for good, so collection had to start early and run unattended |
+
+**Success measured by:**
+
+| Measure | Target | How it is checked |
+|---|---|---|
+| Forecast better than "no change" | on validation: skill ≥ 5 % overall; no hour ahead worse than 1.05 × "no change"; no city below −5 % skill | quality gate, every training run |
+| AQI category right | ≥ 70 % of forecasts | quality gate |
+| Live forecasts better than "no change" | model error below the "no change" error on served forecasts | hourly forecast-vs-actual check |
+| Fresh data | newest measurement at most 4 h old | data validation, LiveDataStale alert |
+| Fast answers | 95 % of forecasts within 2 s | Prometheus, SlowForecasts alert |
+| Failures noticed | each outage raises an alert within minutes | failure tests ([`test_plan.md`](test_plan.md)) |
 
 **Why this problem.** Air quality offers real live data **and** real ground truth:
 new measurements arrive every hour, and the true value of each forecast is known
@@ -118,6 +147,7 @@ every horizon, AQI category right about 83 % of the time.
 | **MLflow** tracking (SQLite backend) with the **Model Registry** | Logging to files; Weights & Biases | Every run records its settings, metrics per horizon and city, plots, the model with its input signature, the Git commit and the DVC fingerprint of its training data, so each model can be traced to its code and data. The registry needs a database backend; SQLite is enough for one machine |
 | **Quality gate** before registration: five checks on validation (overall skill, every horizon, every city, AQI accuracy, sane predictions) | Register every model | These are the failure modes actually seen: the first model would have been stopped by the per-horizon check. Small tolerances avoid failing on noise. A failed gate stops the pipeline; the current model keeps serving |
 | **Champion / challenger**: a new model replaces the champion only if it is at least 1 % better, with both scored on the **same** validation rows | Always serve the newest model | Comparing stored numbers is unfair when the data has changed; re-scoring both is not. The 1 % margin avoids swapping models over noise. `registry.json` in Git records which version was champion at each commit (rollback) |
+| **MLflow Project** (`MLproject`, `python_env.yaml`): the environment (Python 3.12, the pinned packages) and entry points for the tests and the pipeline | Conda environment file; instructions only | `mlflow run . -e tests` runs the tests in the project's environment, or with `--env-manager virtualenv` in a fresh one built from the same pins: development and test environments are identical; the serving image uses the same pins as constraints |
 | **Local CI**: a Git pre-commit hook runs lint, a format check and the 153 quick tests | GitHub Actions | Cloud CI is not available; the hook gives the same guarantee locally: no commit with lint errors or failing tests. With the DVC stages (validation, gate, registry) it is the project's CI |
 | **Reproducibility checked with a fresh clone** | Assume it | Retraining in a fresh clone gave a byte-identical model (same md5), because both the data and the training are deterministic |
 
@@ -183,7 +213,29 @@ every horizon, AQI category right about 83 % of the time.
 
 ---
 
-## 12. Security
+## 12. Code structure and programming style
+
+The code is **mostly functional**: the data steps, features, metrics, drift and
+monitoring checks are plain functions that take data and return data (for example
+`weather_features()`, `expand_horizon()`, `psi()`), each step with a small `main()`
+that reads its inputs and writes its outputs. That keeps them easy to test with tiny
+inputs and lets training and serving share the very same functions. **Classes** are
+used only where something keeps state while the service runs: `ForecastService`
+(loaded model, caches, connections), `ModelServerClient`, `PipelineStatus` (cached
+console data), `Metrics` (Prometheus registry) and `AlertStore`; the API's request and
+response formats are pydantic classes (`backend/main.py`). The frontend and the
+backend are separate programs that meet only through the REST API, whose address is
+a setting (`frontend/assets/config.js`; `/api` through nginx in the containers).
+
+| Choice | Alternatives considered | Why |
+|---|---|---|
+| Functions for data and model steps, classes for stateful services | Everything in classes | Functions without hidden state are the simplest to test and to reuse between training and serving |
+| One step = one script with `main()`, run by DVC | One large application | Each step can run, fail and be retried on its own; DVC tracks its inputs and outputs |
+| Style: ruff (lint and format, PEP 8), docstrings and comments on every module | — | Checked on every commit by the pre-commit hook |
+
+---
+
+## 13. Security
 
 | Choice | Why |
 |---|---|
@@ -191,10 +243,12 @@ every horizon, AQI category right about 83 % of the time.
 | The API key is removed from every log message | Library error messages can contain the full request address, including the key |
 | Containers run as a non-root user; the project folder is read-only inside them | A compromised container cannot change code, models or data |
 | Only the web page is reachable from the network; all other services listen on the laptop only; `/metrics` and `/alerts` are not forwarded by nginx | The smallest attack surface; visitors cannot read internal metrics or post alerts |
+| No personal data is collected or stored (only public measurements and weather) | Nothing about visitors needs protecting; the page keeps only the theme choice in the browser |
+| Not encrypted: traffic is plain HTTP inside the laptop and the local network | Acceptable for one machine; for a public deployment, HTTPS would be added at nginx (one certificate, no change to the services) |
 
 ---
 
-## 13. Trade-offs accepted
+## 14. Trade-offs accepted
 
 | Trade-off | Reason it was accepted | Where it is described |
 |---|---|---|
@@ -203,6 +257,7 @@ every horizon, AQI category right about 83 % of the time.
 | Archive weather in training, forecast weather in serving | No historical forecasts for 2018–2023 | §3 above |
 | Little live data in training so far | A few weeks of collection; retrained models have not yet beaten the champion by 1 % | `architecture.md` §9 |
 | Forecasts per city, not per station | Simpler, more complete series; variation inside a city is lost | §2 above |
+| Built for one machine; scaling is prepared, not done | More cities are a settings change; Spark switches to a cluster by its master address; the containers can move to Docker Swarm or Kubernetes unchanged | `architecture.md` §9 |
 
 **Possible extensions:** e-mail alerts, starting Airflow with the laptop, a map view,
 station-level forecasts, more cities, a second backup disk, a question-answering

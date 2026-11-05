@@ -442,8 +442,11 @@ class ForecastService:
             ).version
         except Exception:  # noqa: BLE001 - health reports it instead of failing
             registry_champion = None
+        # The store is up if it answers; a city without a recent row (e.g. after a
+        # long collection gap) is stale data, reported by LiveDataStale, not an outage.
         try:
-            store_ok = self.live_features(next(iter(self.cities)))[1] is not None
+            self.live_features(next(iter(self.cities)))
+            store_ok = True
         except Exception:  # noqa: BLE001 - health reports it instead of failing
             store_ok = False
         checks = {

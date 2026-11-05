@@ -354,6 +354,8 @@ changed. To start the images that already exist without building, give their tag
 | Test the alert rules | `docker run --rm -v "$PWD":/w -w /w --entrypoint promtool prom/prometheus:v3.5.0 test rules tests/monitoring/alert_rules_test.yml` |
 | Free disk space | `df -h /`; `docker system df`; `docker builder prune -f` removes old build layers only (the next build is slower). A rebuild needs about 5 GB free (DiskSpaceLow alert below that) |
 | After changing a container's mounts | `docker compose rm -s -f <service> && docker compose up -d <service>` (a plain `up -d` can keep the old mount); check with `docker inspect <container>` |
+| Roll back to an earlier model | `python -c "from mlflow import MlflowClient; MlflowClient('sqlite:///mlflow.db').set_registered_model_alias('airsense-pm25', 'champion', '<version>')"`, then `docker compose restart model-server backend` (the registry keeps every version; `data/interim/registry.json` in Git shows which one served at each commit) |
+| Run the tests as an MLflow Project | `MLFLOW_TRACKING_URI=sqlite:///mlflow.db mlflow run . -e tests --env-manager local` (`--env-manager virtualenv` builds a fresh environment from `python_env.yaml`) |
 | Stop everything (data kept) | `docker compose down` |
 | Remove old image versions | `KEEP=$(git rev-parse --short HEAD); docker images --format '{{.Repository}}:{{.Tag}}' \| grep -E '^airsense-(app\|frontend):' \| grep -v ":$KEEP$" \| xargs -r docker rmi` |
 

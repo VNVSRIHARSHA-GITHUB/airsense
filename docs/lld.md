@@ -176,7 +176,7 @@ When no forecast is possible:
 
 ### 2.4 Other responses
 
-- **`/health`** — `{"status": "ok" | "degraded", "checks": {"model_server": bool, "feature_store": bool, "champion_up_to_date": bool}, "model_version": …, "registry_champion": …}`; `degraded` if any check is false.
+- **`/health`** — `{"status": "ok" | "degraded", "checks": {"model_server": bool, "feature_store": bool, "champion_up_to_date": bool}, "model_version": …, "registry_champion": …}`; `degraded` if any check is false. `feature_store` is true when the online store answers (a city without a recent row is stale data, not an outage).
 - **`/cities`** — list of `{city, region, pm25_24h, aqi_category, time_utc, age_hours}`; values are `null` for a city without data. `time_utc` is the hour of the newest value (ISO 8601); the pages show it, `age_hours` (rounded to 0.1 h) is for sorting and alerts.
 - **`/model`** — `{name, version, run_id, target_mode, val_mae, test_mae, test_skill, trained_at, training_data_md5}` from the MLflow run of the champion.
 - **`/guidance`** — list (one item) of the guidance object described above.

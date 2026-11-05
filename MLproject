@@ -1,0 +1,24 @@
+# MLflow Project: one definition of the environment and the entry points, so that
+# development, tests and pipeline runs use the same Python and the same pinned
+# packages (python_env.yaml -> requirements.txt).
+#
+#   mlflow run . -e tests --env-manager local        # in the project's .venv (daily use)
+#   mlflow run . -e tests --env-manager virtualenv   # in a fresh environment built
+#                                                    # from python_env.yaml (clean check)
+#
+# Set MLFLOW_TRACKING_URI=sqlite:///mlflow.db first, so the run is recorded in the
+# project's MLflow database (the run records the Git commit it ran). `pipeline` calls
+# DVC, which still decides what needs to run and keeps dvc.lock correct; on the
+# laptop Airflow runs the pipeline, so use it only when Airflow is stopped (DVC
+# allows one command at a time).
+name: airsense
+
+python_env: python_env.yaml
+
+entry_points:
+  tests:
+    command: "python -m pytest -m 'not spark' -q"
+  tests_all:
+    command: "python -m pytest -q"
+  pipeline:
+    command: "dvc repro"

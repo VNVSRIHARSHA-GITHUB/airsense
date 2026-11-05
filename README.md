@@ -47,7 +47,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Explainability | SHAP (LightGBM contributions) | `src/airsense/serving/explain.py` |
 | Retrieval for advice | sentence-transformers + Qdrant | `src/airsense/guidance/`, `guidance_docs/` |
 | Tests and pre-commit | pytest (162 tests), ruff, promtool | `tests/`, `.githooks/pre-commit` |
-| Packaging and serving | Docker Compose (8 containers), FastAPI, MLflow model server, nginx | `docker-compose.yml`, `docker/`, `backend/` |
+| Packaging and serving | Docker Compose (8 containers), FastAPI, MLflow model server, nginx; MLflow Project for identical environments | `docker-compose.yml`, `docker/`, `backend/`, `MLproject` |
 | Orchestration | Apache Airflow 3.3 (4 workflows) | `airflow/dags/` |
 | Monitoring and alerting | Prometheus (13 alert rules), Alertmanager, Grafana | `docker/monitoring/`, `src/airsense/serving/metrics.py` |
 | Model monitoring | forecast vs actual, drift (PSI), automatic retrain | `src/airsense/monitoring/`, `airflow/dags/airsense_monitor.py` |
@@ -71,7 +71,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | `data/`, `models/`, `reports/` | data, model and plots made by the pipeline, versioned with DVC; Git holds only the `.dvc` files, `dvc.lock` and the small metric files in `data/interim/` |
 
 Top-level files: `dvc.yaml` (the pipeline), `params.yaml` (every setting),
-`docker-compose.yml`, `pyproject.toml`, and `requirements.txt` (laptop),
+`docker-compose.yml`, `MLproject` and `python_env.yaml` (MLflow Project), `pyproject.toml`, and `requirements.txt` (laptop),
 `requirements-serve.txt` (containers), `requirements-dev.txt` (notebooks).
 Created when the system runs and kept out of Git: `logs/` (collector, Airflow
 runs, alerts), `mlruns/` and `mlflow.db` (MLflow), `feature_repo/data/` (Feast registry).
@@ -195,6 +195,7 @@ Operation, failure handling and recovery: [docs/architecture.md](docs/architectu
 ```bash
 pytest -m "not spark"          # 153 quick tests (also run by the pre-commit hook)
 pytest -m spark                # 9 tests with a local Spark session
+MLFLOW_TRACKING_URI=sqlite:///mlflow.db mlflow run . -e tests --env-manager local   # as an MLflow Project
 docker run --rm -v "$PWD":/w -w /w --entrypoint promtool prom/prometheus:v3.5.0 \
     test rules tests/monitoring/alert_rules_test.yml   # alert rules, 7 scenarios
 ```
