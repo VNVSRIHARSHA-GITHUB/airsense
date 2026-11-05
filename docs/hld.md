@@ -25,13 +25,11 @@ its own health and accuracy.
 |---|---|
 | One laptop: CPU only, 14 GB RAM, about 80 GB disk | Light models, local-mode tools, memory limits on every container, careful disk use |
 | No cloud services allowed | Collection, storage, CI, scheduling and monitoring all run on the laptop; backups are on the same disk |
-| One person, about 30 days | Prefer standard tools with little operational overhead; promise only what can be finished |
 | The live feed has no history | Every hour not collected is lost for good, so collection had to start early and run unattended |
-| Grading on operations (AIOps practices), not on model accuracy | Spend effort on reproducibility, automation, monitoring and recovery rather than on squeezing the error down |
 
-**Why this problem.** Air quality is one of very few student-sized problems with
-real live data **and** real ground truth: new measurements arrive every hour, and
-the true value of each forecast is known 24 hours later. So production accuracy can
+**Why this problem.** Air quality offers real live data **and** real ground truth:
+new measurements arrive every hour, and the true value of each forecast is known
+24 hours later. So production accuracy can
 be measured for real, not simulated, and seasons (monsoon, winter smog, Diwali)
 cause genuine drift, which gives monitoring and retraining a real job to do. It
 also fits a CPU laptop, and the user interface is simple for anyone: pick a city,
@@ -60,7 +58,7 @@ Before any modelling, three questions decide what the system forecasts.
 | **Kaggle 2010–2023** dataset (453 stations), downloaded with the Kaggle API | The popular 2015–2020 dataset; a manual browser download | More recent, more stations and cities. A scripted download is repeatable and documents exactly where the data came from |
 | **Open-Meteo weather** for both training (archive) and serving (forecast) | Station weather from the Kaggle files; no weather | The live feed has no weather, so Open-Meteo is needed at serving anyway; using the same provider in training keeps the feature definitions identical. Station weather is patchy and measured elsewhere than serving's. Without weather, longer horizons are weaker and there is no weather drift to watch |
 | **Accept archive-vs-forecast weather skew** and measure it | Train on past forecasts; add noise to the archive | In training the model sees the weather that happened; at serving, the weather forecast. Past forecasts are not available for 2018–2023, and a noise level would be a guess. The skew is documented and the observed weather of the saved forecasts is used in drift checks |
-| **Accept the 2023–2026 gap** (history ends March 2023, live starts October 2026) and treat it as drift | Fill it from the CPCB portal by hand; OpenAQ | A genuine drift-and-retrain story instead of a simulated one; serving is not blocked because recent inputs come from live data. Manual portal downloads (captchas, ~150 stations) are not realistic in the time |
+| **Accept the 2023–2026 gap** (history ends March 2023, live starts October 2026) and treat it as drift | Fill it from the CPCB portal by hand; OpenAQ | A genuine drift-and-retrain story instead of a simulated one; serving is not blocked because recent inputs come from live data. Manual portal downloads (captchas, ~150 stations) cannot be automated |
 | **UTC everywhere** in storage; Indian time only for calendar features and display | Local time in files | Mixing time zones silently shifts lag features by 5.5 hours. Calendar effects follow local life, so hour, weekday and the Diwali flag are computed in IST |
 | **Raw data never edited**; all cleaning writes new files | Clean in place | A cleaning bug can always be fixed and re-run from the untouched original |
 | **Collector every 30 minutes** (minutes 5 and 35) with retries and a clear exit code | Once an hour | CPCB publishes late and unevenly; a second run catches late stations. Repeated readings are removed in processing. Exit codes let the scheduler tell success, failure and "the source was empty" apart |
@@ -129,7 +127,7 @@ every horizon, AQI category right about 83 % of the time.
 
 | Choice | Alternatives considered | Why |
 |---|---|---|
-| **Two services**: an MLflow model server (the champion over REST) and a FastAPI backend (everything else) | The backend loads the model itself; BentoML or Seldon | The standard, registry-driven way to deploy a model; a new model needs no backend change, and each part can be restarted on its own. BentoML/Seldon add more to learn and run for no gain on a laptop. Cost: one extra HTTP call (10–75 ms). The backend loads the same model version only to compute explanations, never forecasts |
+| **Two services**: an MLflow model server (the champion over REST) and a FastAPI backend (everything else) | The backend loads the model itself; BentoML or Seldon | The standard, registry-driven way to deploy a model; a new model needs no backend change, and each part can be restarted on its own. BentoML/Seldon add more services to run for no gain on a single machine. Cost: one extra HTTP call (10–75 ms). The backend loads the same model version only to compute explanations, never forecasts |
 | **Online REST serving**, a forecast computed per request (about 70 ms) | Pre-computed batch forecasts | Always uses the newest data and weather; cheap enough at this scale |
 | **"No forecast" is a normal answer** (HTTP 200 with a reason); 503 only when a dependency is down | An error for stale data | Old or missing data is a true statement about the world, not a server failure; clients can tell "retry later" (503) from "no data" |
 | **No forecast without fresh data** (the current value at most 4 h old) | Forecast from old values | A forecast from stale data looks trustworthy but is not; the page says why and shows the last known reading and nearby cities instead |
