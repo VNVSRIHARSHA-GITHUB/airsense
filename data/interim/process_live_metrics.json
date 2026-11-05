@@ -1,113 +1,113 @@
 {
-  "processed_at_utc": "2026-11-04T16:37:13.657920+00:00",
+  "processed_at_utc": "2026-11-05T00:05:10.546726+00:00",
   "time_offset_hours": -1,
-  "snapshots": 267,
+  "snapshots": 281,
   "partial_snapshots": 6,
-  "raw_records": 140021,
-  "repeats_removed": 17900,
+  "raw_records": 147795,
+  "repeats_removed": 18976,
   "conflicting_repeats": 0,
-  "station_hours": 21083,
-  "city_hours": 1993,
-  "seconds": 0.98,
+  "station_hours": 22158,
+  "city_hours": 2091,
+  "seconds": 0.81,
   "cities_without_live_data": [],
   "cities": {
     "Ahmedabad": {
-      "hours": 143,
+      "hours": 150,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
+      "last_utc": "2026-11-04T22:30:00Z",
       "mean_stations": 7.6,
-      "mean_pm25_24h": 100.2
+      "mean_pm25_24h": 102.4
     },
     "Bengaluru": {
-      "hours": 142,
+      "hours": 149,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
+      "last_utc": "2026-11-04T22:30:00Z",
       "mean_stations": 5.7,
-      "mean_pm25_24h": 42.6
+      "mean_pm25_24h": 42.5
     },
     "Chandigarh": {
-      "hours": 143,
+      "hours": 150,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
+      "last_utc": "2026-11-04T22:30:00Z",
       "mean_stations": 1.5,
-      "mean_pm25_24h": 51.4
+      "mean_pm25_24h": 52.2
     },
     "Chennai": {
-      "hours": 142,
+      "hours": 149,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
-      "mean_stations": 6.3,
-      "mean_pm25_24h": 46.9
+      "last_utc": "2026-11-04T22:30:00Z",
+      "mean_stations": 6.4,
+      "mean_pm25_24h": 47.1
     },
     "Delhi": {
-      "hours": 143,
+      "hours": 150,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
-      "mean_stations": 55.5,
-      "mean_pm25_24h": 197.3
+      "last_utc": "2026-11-04T22:30:00Z",
+      "mean_stations": 55.7,
+      "mean_pm25_24h": 205.0
     },
     "Guwahati": {
-      "hours": 143,
+      "hours": 150,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
+      "last_utc": "2026-11-04T22:30:00Z",
       "mean_stations": 3.8,
-      "mean_pm25_24h": 50.5
+      "mean_pm25_24h": 51.8
     },
     "Hyderabad": {
-      "hours": 142,
+      "hours": 149,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
+      "last_utc": "2026-11-04T22:30:00Z",
       "mean_stations": 12.8,
-      "mean_pm25_24h": 52.4
+      "mean_pm25_24h": 51.4
     },
     "Jaipur": {
-      "hours": 142,
+      "hours": 149,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
-      "mean_stations": 5.5,
-      "mean_pm25_24h": 91.8
+      "last_utc": "2026-11-04T22:30:00Z",
+      "mean_stations": 5.6,
+      "mean_pm25_24h": 93.4
     },
     "Kanpur": {
-      "hours": 142,
+      "hours": 149,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
+      "last_utc": "2026-11-04T22:30:00Z",
       "mean_stations": 2.8,
-      "mean_pm25_24h": 135.6
+      "mean_pm25_24h": 137.4
     },
     "Kolkata": {
-      "hours": 142,
+      "hours": 149,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
+      "last_utc": "2026-11-04T22:30:00Z",
       "mean_stations": 6.9,
-      "mean_pm25_24h": 68.9
+      "mean_pm25_24h": 69.3
     },
     "Lucknow": {
-      "hours": 142,
+      "hours": 149,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
-      "mean_stations": 5.7,
-      "mean_pm25_24h": 125.6
+      "last_utc": "2026-11-04T22:30:00Z",
+      "mean_stations": 5.8,
+      "mean_pm25_24h": 129.3
     },
     "Mumbai": {
-      "hours": 142,
+      "hours": 149,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
-      "mean_stations": 22.3,
-      "mean_pm25_24h": 83.9
+      "last_utc": "2026-11-04T22:30:00Z",
+      "mean_stations": 22.4,
+      "mean_pm25_24h": 83.7
     },
     "Patna": {
-      "hours": 143,
+      "hours": 150,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
+      "last_utc": "2026-11-04T22:30:00Z",
       "mean_stations": 4.9,
-      "mean_pm25_24h": 78.8
+      "mean_pm25_24h": 80.6
     },
     "Pune": {
-      "hours": 142,
+      "hours": 149,
       "first_utc": "2026-10-20T09:30:00Z",
-      "last_utc": "2026-11-04T14:30:00Z",
+      "last_utc": "2026-11-04T22:30:00Z",
       "mean_stations": 6.6,
-      "mean_pm25_24h": 101.5
+      "mean_pm25_24h": 102.4
     }
   }
 }

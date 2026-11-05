@@ -1,15 +1,15 @@
 {
-  "trained_at_utc": "2026-11-04T11:14:40.760054+00:00",
-  "mlflow_run_id": "c2b69f967db147b29b717fae58ef4b32",
+  "trained_at_utc": "2026-11-04T18:38:08.258760+00:00",
+  "mlflow_run_id": "97f24667e17e4660907d65c7363a8c92",
   "best_iteration": 319,
-  "train_seconds": 205.1,
-  "seconds": 238.5,
+  "train_seconds": 116.7,
+  "seconds": 136.3,
   "rows": {
     "train": 10748691,
     "val": 2149920,
     "test": 1400028,
     "live_train": 17962,
-    "live_recent": 3010
+    "live_recent": 3668
   },
   "n_features": 40,
   "category_codes": {
@@ -932,7 +932,7 @@
   },
   "live_training": {
     "rows_train": 17962,
-    "rows_recent": 3010,
+    "rows_recent": 3668,
     "repeats": 20,
     "weight_share": 0.0325,
     "holdout_days": 2,
@@ -940,20 +940,20 @@
     "last_target_utc": "2026-11-01 12:30:00+00:00"
   },
   "recent_live": {
-    "from_utc": "2026-11-02 10:30:00+00:00",
-    "to_utc": "2026-11-04 09:30:00+00:00",
+    "from_utc": "2026-11-02 17:30:00+00:00",
+    "to_utc": "2026-11-04 16:30:00+00:00",
     "model": {
-      "n": 504,
-      "mae": 15.859280325360645,
-      "rmse": 29.468038796146867,
-      "aqi_accuracy": 0.6944444444444444,
-      "skill": 0.026909285487918377
+      "n": 798,
+      "mae": 13.180276597525877,
+      "rmse": 25.41072790412852,
+      "aqi_accuracy": 0.7568922305764411,
+      "skill": 0.029179967003334695
     },
     "persistence": {
-      "n": 504,
-      "mae": 16.297843653058248,
-      "rmse": 29.626292322311663,
-      "aqi_accuracy": 0.7420634920634921,
+      "n": 798,
+      "mae": 13.576436568621107,
+      "rmse": 25.66468834560261,
+      "aqi_accuracy": 0.7669172932330827,
       "skill": 0.0
     }
   }

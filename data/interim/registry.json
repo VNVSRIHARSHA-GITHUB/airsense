@@ -1,8 +1,8 @@
 {
-  "decided_at_utc": "2026-11-04T11:14:59.944577+00:00",
+  "decided_at_utc": "2026-11-04T18:38:29.199419+00:00",
   "model_name": "airsense-pm25",
-  "challenger_version": 3,
-  "challenger_run_id": "c2b69f967db147b29b717fae58ef4b32",
+  "challenger_version": 4,
+  "challenger_run_id": "97f24667e17e4660907d65c7363a8c92",
   "challenger_val_mae": 4.4825,
   "previous_champion_version": 1,
   "previous_champion_val_mae": 4.481,
