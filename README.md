@@ -57,18 +57,24 @@ Details: [docs/architecture.md](docs/architecture.md).
 
 | Folder | Contents |
 |---|---|
-| `src/airsense/` | the Python package: ingestion, validation, processing, features, training, serving, guidance, monitoring |
+| `src/airsense/` | the Python package: ingestion, validation, processing, features, training, serving, guidance, monitoring (and `common` for settings) |
 | `backend/` | FastAPI application (`main.py`) |
 | `frontend/` | Forecast page and Pipeline console (HTML, CSS, JavaScript, Chart.js) |
 | `model_server/` | start script for the MLflow model server |
-| `feature_repo/` | Feast feature definitions |
-| `airflow/` | the four workflows and the scripts that start Airflow |
+| `feature_repo/` | Feast feature definitions and store settings |
+| `airflow/` | the four workflows (`dags/`) and the scripts that start Airflow |
 | `docker/` | Dockerfiles, nginx, Prometheus, Alertmanager and Grafana configuration |
 | `guidance_docs/` | health advice per AQI category and group (with sources) |
-| `tests/` | unit tests and alert-rule tests |
-| `notebooks/` | exploratory analysis (EDA, live-feed checks) |
+| `tests/` | unit tests (`unit/`) and alert-rule tests (`monitoring/`) |
+| `notebooks/` | exploratory analysis: EDA, live-feed checks, the 24-hour average experiment |
 | `docs/` | architecture, low-level design, user manual, data sources, features, UI checklist |
-| `data/`, `models/`, `reports/` | produced by the pipeline; versioned with DVC, not with Git |
+| `data/`, `models/`, `reports/` | data, model and plots made by the pipeline, versioned with DVC; Git holds only the `.dvc` files, `dvc.lock` and the small metric files in `data/interim/` |
+
+Top-level files: `dvc.yaml` (the pipeline), `params.yaml` (every setting),
+`docker-compose.yml`, `pyproject.toml`, and `requirements.txt` (laptop),
+`requirements-serve.txt` (containers), `requirements-dev.txt` (notebooks).
+Created when the system runs and kept out of Git: `logs/` (collector, Airflow
+runs, alerts), `mlruns/` and `mlflow.db` (MLflow), `feature_repo/data/` (Feast registry).
 
 ## Quick start
 
