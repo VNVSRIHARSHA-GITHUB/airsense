@@ -1,5 +1,5 @@
 {
-  "processed_at_utc": "2026-11-07T05:30:44.215879+00:00",
+  "processed_at_utc": "2026-11-07T05:32:06.313017+00:00",
   "time_offset_hours": -1,
   "snapshots": 293,
   "partial_snapshots": 6,
@@ -8,7 +8,7 @@
   "conflicting_repeats": 0,
   "station_hours": 22938,
   "city_hours": 2161,
-  "seconds": 1.55,
+  "seconds": 1.46,
   "cities_without_live_data": [],
   "cities": {
     "Ahmedabad": {
