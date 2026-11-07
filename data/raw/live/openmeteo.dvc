@@ -1,6 +1,6 @@
 outs:
-- md5: 7484b4a78180d25f1bee96e65507242a.dir
-  size: 6612872
-  nfiles: 41
+- md5: fbcce15f173184cf40c432c55d8a6b21.dir
+  size: 8704525
+  nfiles: 54
   hash: md5
   path: openmeteo
