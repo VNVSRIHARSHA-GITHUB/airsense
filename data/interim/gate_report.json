@@ -1,12 +1,12 @@
 {
-  "checked_at_utc": "2026-11-04T18:38:13.967514+00:00",
-  "mlflow_run_id": "97f24667e17e4660907d65c7363a8c92",
+  "checked_at_utc": "2026-11-08T08:24:58.402042+00:00",
+  "mlflow_run_id": "b06f688eaf78491da2435021841f43b4",
   "passed": true,
   "checks": [
     {
       "check": "overall_skill",
       "passed": true,
-      "value": 0.2026,
+      "value": 0.2047,
       "threshold": 0.05,
       "detail": ""
     },
@@ -27,34 +27,34 @@
     {
       "check": "aqi_category_accuracy",
       "passed": true,
-      "value": 0.8659,
+      "value": 0.8665,
       "threshold": 0.7,
       "detail": ""
     },
     {
       "check": "predictions_valid",
       "passed": true,
-      "value": "min 2.0, max 468.7, non-finite 0, no forecast 0.106%",
+      "value": "min 2.5, max 470.3, non-finite 0, no forecast 0.106%",
       "threshold": "finite, within [0, 1000], no forecast <= 1.0%",
       "detail": ""
     }
   ],
   "info": {
     "recent_live": {
-      "from_utc": "2026-11-02 17:30:00+00:00",
-      "to_utc": "2026-11-04 16:30:00+00:00",
+      "from_utc": "2026-11-06 05:30:00+00:00",
+      "to_utc": "2026-11-08 04:30:00+00:00",
       "model": {
-        "n": 798,
-        "mae": 13.180276597525877,
-        "rmse": 25.41072790412852,
-        "aqi_accuracy": 0.7568922305764411,
-        "skill": 0.029179967003334695
+        "n": 1666,
+        "mae": 8.338585289989926,
+        "rmse": 12.297647007404198,
+        "aqi_accuracy": 0.8817527010804321,
+        "skill": 0.033961061098273015
       },
       "persistence": {
-        "n": 798,
-        "mae": 13.576436568621107,
-        "rmse": 25.66468834560261,
-        "aqi_accuracy": 0.7669172932330827,
+        "n": 1666,
+        "mae": 8.631727929590415,
+        "rmse": 12.968314504854018,
+        "aqi_accuracy": 0.8301320528211285,
         "skill": 0.0
       }
     }

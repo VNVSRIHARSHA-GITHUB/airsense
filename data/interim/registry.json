@@ -1,13 +1,13 @@
 {
-  "decided_at_utc": "2026-11-04T18:38:29.199419+00:00",
+  "decided_at_utc": "2026-11-08T08:25:24.838515+00:00",
   "model_name": "airsense-pm25",
-  "challenger_version": 4,
-  "challenger_run_id": "97f24667e17e4660907d65c7363a8c92",
-  "challenger_val_mae": 4.4825,
+  "challenger_version": 6,
+  "challenger_run_id": "b06f688eaf78491da2435021841f43b4",
+  "challenger_val_mae": 4.4706,
   "previous_champion_version": 1,
   "previous_champion_val_mae": 4.481,
   "promoted": false,
-  "reason": "validation MAE 4.4825 > 4.4362 (champion 4.4810 - 1%): champion kept",
+  "reason": "validation MAE 4.4706 > 4.4362 (champion 4.4810 - 1%): champion kept",
   "champion_version": 1,
   "champion_uri": "models:/airsense-pm25@champion"
 }
