@@ -1,9 +1,9 @@
 {
-  "checked_at_utc": "2026-11-08T17:35:52.524755+00:00",
+  "checked_at_utc": "2026-11-09T17:35:43.213541+00:00",
   "materialize_days": 7,
-  "materialize_seconds": 0.26,
-  "online_read_ms_median": 0.83,
-  "online_read_ms_max": 1.24,
+  "materialize_seconds": 0.41,
+  "online_read_ms_median": 1.26,
+  "online_read_ms_max": 2.32,
   "cities_in_online_store": 14,
   "missing_cities": [],
   "max_live_age_hours": 4,
