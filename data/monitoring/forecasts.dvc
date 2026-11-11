@@ -1,6 +1,6 @@
 outs:
-- md5: bed1941742ed1a71826c6215a9f7768a.dir
-  size: 424111
-  nfiles: 56
+- md5: 8583b43ceae52b1144ffbfde810b7695.dir
+  size: 493604
+  nfiles: 65
   hash: md5
   path: forecasts
