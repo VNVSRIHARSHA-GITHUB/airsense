@@ -47,7 +47,7 @@ inputs drift (§6).
 | Training | LightGBM, **MLflow** tracking | Trains the model, logs parameters, metrics and the model |
 | Quality gate | Python | Five checks against baselines before a model may serve |
 | Registry | MLflow Model Registry | Versions; the `champion` alias marks the model that serves |
-| Guidance index | sentence-transformers, **Qdrant** | Health advice per AQI category and user group, found by semantic search |
+| Guidance index | sentence-transformers, **Qdrant** | Health advice per AQI category and user group (sentence embeddings; category and group as exact filters) |
 | Pipeline control | **DVC** (`dvc.yaml`, 15 stages) | Runs only what changed; versions data and models by checksum; live snapshots and saved forecasts versioned daily (`dvc add` + `dvc push`) |
 | Orchestration | **Apache Airflow 3.3** (own environment, `airflow standalone`) | Schedules the pipeline as four workflows (DAGs), with retries, logs and a web UI on port 8081 |
 | Model server | `mlflow models serve` | Serves the champion over REST (`/invocations`) |
@@ -396,6 +396,9 @@ Airflow, then clear the next task with "Downstream".
 - **Live data in training is still small.** About two weeks with gaps (the laptop was
   off at times), so the live rows carry only a few per cent of the training weight; the
   retrained models have not yet beaten the champion by the required 1 %.
+- **Live values are AQI sub-indices.** The CPCB feed reports PM2.5 as its AQI
+  sub-index (0–500), while the history is in µg/m³; the values are not yet converted, so
+  live inputs, actuals and drift are partly on another scale (`docs/data_sources.md` §3).
 
 ---
 

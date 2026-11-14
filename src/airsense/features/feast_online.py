@@ -1,7 +1,7 @@
 """Load live features into the Feast online store and check them (Stage 3.5).
 
 1. materialize: copy the newest live PM2.5 features per city (pm_live view,
-   last `features.materialize_days` days) into the SQLite online store;
+   last `features.materialize_days` days) into the Redis online store;
 2. read them back for every configured city, as the serving API will, and
    measure the read latency;
 3. check freshness: Feast does not apply ttl to online reads, so the age of each
@@ -9,7 +9,7 @@
    validation.processed.max_live_age_hours;
 4. check training/serving consistency: the same newest features are read through
    the OFFLINE path (DuckDB point-in-time join, as training does) and must equal
-   the ONLINE values (SQLite, as serving does), city by city.
+   the ONLINE values (Redis, as serving does), city by city.
 
 A missing or stale city is a WARNING (the live feed can lag). An online store with
 no city at all, or any offline/online difference (skew), is an ERROR (exit code 1).

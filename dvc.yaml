@@ -1,4 +1,4 @@
-# AirSense pipeline (Stage 2: data engineering).
+# AirSense pipeline: validation, processing, features, training, gate, registry, guidance index.
 # `dvc repro` runs the stages in dependency order and re-runs only the stages whose
 # code, input data or parameters changed. `dvc dag` draws the graph.
 stages:
@@ -247,8 +247,8 @@ stages:
 
   # Writes to the Qdrant container: start it first (docker compose up -d qdrant).
   guidance_index:
-    # Embeds the health-guidance texts and stores them in local Qdrant.
-    # Stop the backend first: local Qdrant allows only one process on the folder.
+    # Embeds the health-guidance texts and stores them in the Qdrant server
+    # (container); the backend can keep running while the index is rebuilt.
     cmd: python src/airsense/guidance/index.py
     deps:
       - src/airsense/guidance/index.py

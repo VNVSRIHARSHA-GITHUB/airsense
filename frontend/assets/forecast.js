@@ -22,7 +22,9 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const hasValue = (c) => c.pm25_24h != null;
 // worst first; cities without a recent value last
 const ranked = () => [...state.cities].sort((a, b) => (hasValue(b) - hasValue(a)) || ((b.pm25_24h || 0) - (a.pm25_24h || 0)));
-const measuredAt = (c) => (c.age_hours == null ? null : new Date(Date.now() - c.age_hours * 3600 * 1000));
+// The exact hour from /cities; the age is rounded to 0.1 h and would drift by minutes (F1).
+const measuredAt = (c) => (c.time_utc ? new Date(c.time_utc)
+  : c.age_hours == null ? null : new Date(Date.now() - c.age_hours * 3600 * 1000));
 
 // ---------- city tiles and phone dropdown ----------
 

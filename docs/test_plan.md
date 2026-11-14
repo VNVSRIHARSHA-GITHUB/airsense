@@ -32,7 +32,7 @@ Firefox; the accuracy of the official CPCB measurements themselves.
 
 | Level | What it shows | Tool | When it runs | Pass criterion |
 |---|---|---|---|---|
-| **Unit** | each function does what it should on small, known inputs | pytest (162 tests: 153 quick, 9 with Spark) | every commit (pre-commit hook: quick tests, ruff lint and format check); Spark tests by hand | all pass; a failing test blocks the commit |
+| **Unit** | each function does what it should on small, known inputs | pytest (163 tests: 154 quick, 9 with Spark) | every commit (pre-commit hook: quick tests, ruff lint and format check); Spark tests by hand | all pass; a failing test blocks the commit |
 | **Data validation** | the real data is usable before it is used | Great Expectations and Python checks, as DVC stages | every pipeline run | no critical check fails (warnings are reported, not blocking) |
 | **Model quality** | a new model is good enough to serve | quality gate (5 checks on validation data) and the champion rule | every training run | all 5 checks pass; the challenger replaces the champion only if ≥ 1 % better on the same rows |
 | **Alert rules** | the alerts fire when they should and stay quiet otherwise | `promtool test rules` | after any rule change | all 7 scenarios pass |
@@ -60,21 +60,21 @@ was fixed and re-tested; no open defect that affects users or operation.
 
 | Area | File | Tests | What is checked |
 |---|---|---|---|
-| Collection | `test_datagov_client.py` | 6 | paging, retries, API key never in logs, empty feed gives exit code 99 and status "empty", network failure gives "error", files written only where intended |
-| | `test_fetch_weather_history.py` | 5 | weather archive requests and the saved table |
+| Collection | `test_datagov_client.py` | 6 | API key never in logs, snapshots in dated folders, empty feed gives exit code 99 and status "empty" (last good time kept), network failure gives "error", files written only where intended |
+| | `test_fetch_weather_history.py` | 5 | archive download split into calendar years, expected row counts (leap years), UTC labels |
 | Validation | `test_validate_raw.py` | 4 | a clean station passes; negative values and repeated hours quarantine the station; a missing column; gaps and capped values only warn |
 | | `test_validate_processed.py`, `test_validate_weather.py` | 9 | output columns and types, freshness and station-count warnings, broken data caught as critical |
 | Processing | `test_process_history.py` | 9 | Spark: time zone shift, 24-hour average with the 16-hour rule, stuck sensors, city mean (marked `spark`) |
 | | `test_process_live.py` | 6 | repeated readings removed, revised readings counted, hour convention, same columns as the history |
-| Features | `test_build_features.py` | 14 | lags, changes, rolling values, weather at the middle of the hour, calendar in Indian time, Diwali window edges, identical files for identical data |
+| Features | `test_build_features.py` | 17 | lags, changes, rolling values, weather at the middle of the hour, calendar in Indian time, Diwali window edges, identical files for identical data |
 | | `test_build_training.py`, `test_build_training_live.py` | 10 | target and target-hour weather from *t + h*, features from *t*, no future data, missing targets dropped; live rows use only observed weather |
-| | `test_feast_online.py` | 5 | online store refresh and freshness warning |
+| | `test_feast_online.py` | 5 | newest hour per city (empty and future rows ignored), online vs offline values compared |
 | Training | `test_train.py` | 13 | time split with gaps (no overlap across a boundary), baselines, metrics, live rows only in the training split, repeat factor, model signature with float inputs |
-| | `test_gate.py` | 7 | each of the 5 gate checks passes and fails at its limit; empty forecasts counted correctly |
+| | `test_gate.py` | 11 | each of the 5 gate checks passes and fails at its limit; empty forecasts counted correctly |
 | Serving | `test_serving.py` | 7 | **serving rows equal training rows** for the same moment; missing inputs; AQI category edges; explanation names and totals |
-| | `test_service.py` | 16 | normal forecast; stale, missing or NaN current value gives no forecast; unknown city; weather fallback; model server down; guidance failure keeps the forecast; exact measurement time in the city list; health: store reachable vs down |
+| | `test_service.py` | 15 | normal forecast; stale, missing or NaN current value gives no forecast; unknown city; weather fallback; model server down; guidance failure keeps the forecast; exact measurement time in the city list; health: store reachable vs down |
 | | `test_api.py` | 9 | every endpoint and response schema; 404 unknown city; 422 invalid value; 503 when a dependency is down (never 500) |
-| | `test_guidance.py`, `test_settings.py` | 6 | all 18 advice texts parsed with sources; search returns the right category and group; settings and environment overrides |
+| | `test_guidance.py`, `test_settings.py` | 7 | all 18 advice texts parsed with sources; search returns the right text for every category and group; settings and environment overrides |
 | Console and monitoring | `test_pipeline.py` | 11 | steps and graph from `dvc.yaml`, status from `dvc status`, collection gaps (including a stopped collector), Airflow runs, monitoring summary |
 | | `test_metrics.py`, `test_alerts.py` | 8 | `/metrics` content, free disk space, alerts stored as firing then resolved |
 | | `test_record_forecasts.py`, `test_monitoring_checks.py`, `test_monitor_decision.py` | 11 | saved forecasts, forecast/actual matching (each forecast once), "error high" rule, PSI on equal and shifted data, retrain decision and cooldown |
@@ -182,7 +182,7 @@ at the time and are covered by the tests listed in §3 and §4.
 
 | Level | Cases | Result |
 |---|---|---|
-| Unit tests | 162 (153 quick + 9 Spark) | all pass |
+| Unit tests | 163 (154 quick + 9 Spark) | all pass |
 | Alert-rule tests | 7 scenarios | all pass |
 | Pipeline checks | validation, gate, champion rule on every run; reproducibility once | pass |
 | Container failure tests | 6 | all pass (2 after fixes) |

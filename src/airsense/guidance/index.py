@@ -114,16 +114,22 @@ def build(client, collection: str, entries: list[dict], embed: Embedder) -> int:
 def search(
     client, collection: str, embed: Embedder, category: str, group: str, k: int = 1
 ):
-    """Best guidance for an AQI category and a user group (filter + semantic match)."""
+    """Best guidance for an AQI category and a user group.
+
+    Category and a known group are exact filters: with the group matched only by
+    meaning, "Very Poor, general public" returned the outdoor workers' text. An
+    unknown group falls back to the closest text of the category.
+    """
     from qdrant_client.models import FieldCondition, Filter, MatchValue
 
+    must = [FieldCondition(key="category", match=MatchValue(value=category))]
+    if group in GROUPS:
+        must.append(FieldCondition(key="group", match=MatchValue(value=group)))
     query = np.asarray(embed([f"{category}. {GROUPS.get(group, group)}"]))[0]
     hits = client.query_points(
         collection,
         query=query.tolist(),
-        query_filter=Filter(
-            must=[FieldCondition(key="category", match=MatchValue(value=category))]
-        ),
+        query_filter=Filter(must=must),
         limit=k,
     ).points
     return [{**h.payload, "score": round(float(h.score), 3)} for h in hits]

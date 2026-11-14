@@ -179,11 +179,11 @@ class ForecastService:
         self._weather_failed_at = -1e9
         self._weather_lock = threading.Lock()
         self._weather_note: str | None = None
-        # Feast's SQLite online store shares one connection between threads; two
-        # reads at the same moment broke it (IndexError), so reads take turns.
+        # Online reads take turns (about 1 ms each). Added for the earlier SQLite
+        # store, where two reads at the same moment broke its shared connection.
         self._store_lock = threading.Lock()
         self._guidance = None  # opened on first use (loads the embedding model)
-        self._guidance_lock = threading.Lock()  # local Qdrant: open only once
+        self._guidance_lock = threading.Lock()  # load the embedding model only once
 
     # ---------- inputs ----------
 

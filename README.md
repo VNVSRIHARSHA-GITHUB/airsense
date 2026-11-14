@@ -46,7 +46,7 @@ Details: [docs/architecture.md](docs/architecture.md).
 | Quality gate | five checks against baselines | `src/airsense/training/gate.py`, `params.yaml` |
 | Explainability | SHAP (LightGBM contributions) | `src/airsense/serving/explain.py` |
 | Retrieval for advice | sentence-transformers + Qdrant | `src/airsense/guidance/`, `guidance_docs/` |
-| Tests and pre-commit | pytest (162 tests), ruff, promtool | `tests/`, `.githooks/pre-commit` |
+| Tests and pre-commit | pytest (163 tests), ruff, promtool | `tests/`, `.githooks/pre-commit` |
 | Packaging and serving | Docker Compose (8 containers), FastAPI, MLflow model server, nginx; MLflow Project for identical environments | `docker-compose.yml`, `docker/`, `backend/`, `MLproject` |
 | Orchestration | Apache Airflow 3.3 (4 workflows) | `airflow/dags/` |
 | Monitoring and alerting | Prometheus (13 alert rules), Alertmanager, Grafana | `docker/monitoring/`, `src/airsense/serving/metrics.py` |
@@ -193,7 +193,7 @@ Operation, failure handling and recovery: [docs/architecture.md](docs/architectu
 ## Tests
 
 ```bash
-pytest -m "not spark"          # 153 quick tests (also run by the pre-commit hook)
+pytest -m "not spark"          # 154 quick tests (also run by the pre-commit hook)
 pytest -m spark                # 9 tests with a local Spark session
 MLFLOW_TRACKING_URI=sqlite:///mlflow.db mlflow run . -e tests --env-manager local   # as an MLflow Project
 docker run --rm -v "$PWD":/w -w /w --entrypoint promtool prom/prometheus:v3.5.0 \
@@ -235,6 +235,9 @@ Failure tests (each container stopped, alerts, automatic retraining):
   Prometheus are local to the laptop; alerts go to the console only.
 - **Little live data in training so far:** retrained models have not yet beaten the
   first model by the required 1 %.
+- **Live values are AQI sub-indices, not µg/m³:** the CPCB feed reports PM2.5 as its
+  AQI sub-index while the history is in µg/m³; the conversion is not yet applied
+  (details in [docs/data_sources.md](docs/data_sources.md) §3).
 
 Possible extensions: e-mail alerts, starting Airflow with the laptop, a map view.
 

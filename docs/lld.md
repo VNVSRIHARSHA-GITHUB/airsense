@@ -92,7 +92,7 @@ interactively at `/docs` (OpenAPI, generated from the schemas in `backend/main.p
 | `GET /guidance` | `category` (query, required: `Good` · `Satisfactory` · `Moderate` · `Poor` · `Very Poor` · `Severe`); `group` (as above) | 200: best-matching advice | 422 invalid value · 503 guidance index unavailable |
 | `GET /pipeline` | — | 200: pipeline status for the operators' console | — (a failed `dvc status` is reported in the body) |
 | `GET /metrics` (internal) | — | 200: Prometheus text format (§7) | — |
-| `POST /alerts` (internal) | Alertmanager webhook body (`alerts[]`) | 200: `{"received": n}` | — |
+| `POST /alerts` (internal) | Alertmanager webhook body (`alerts[]`) | 200: `{"stored": n}` | — |
 
 ### 2.2 Status codes
 
@@ -221,7 +221,7 @@ sequenceDiagram
         S->>M: POST /invocations (24 rows)
         M-->>S: 24 predicted changes (failure → 503)
         S->>S: level = current + change · clip at 0 · AQI category
-        S->>S: SHAP with the same model version → top 4 factors
+        S->>S: SHAP with the same model version → top 6 factors
         S->>Q: search(category of worst hour, group)
         Q-->>S: advice text (failure → warning)
         S-->>A: forecast dict
@@ -323,9 +323,10 @@ stored with every text. The DVC stage `guidance_index` embeds the 18 texts with
 in the collection `guidance` of the Qdrant server (cosine distance) with category, group, text and sources as
 payload.
 
-A search filters on the **category** (exact match) and ranks by similarity to a
-query describing the **group**, so the category is always right and the group is
-matched by meaning. The index build checks itself: the query "Poor, sensitive" must
+A search filters on the **category** and the **group** (both exact matches) and
+ranks the result by similarity to the query, so the advice always fits both. (Matching
+the group by meaning alone gave the general public the outdoor workers' text at "Very
+Poor"; a unit test now checks all 18 pairs.) The index build checks itself: the query "Poor, sensitive" must
 return the `sensitive` text, or the stage fails.
 
 ---
@@ -577,7 +578,7 @@ hours) and the small embedding model; the model server holds one booster.
 |---|---|
 | `tests/unit/test_serving.py` | serving rows equal training rows for the same inputs; missing weather counted and left NaN; empty Feast features become NaN; AQI category edges; factor names and SHAP aggregation; missing inputs left out of the explanation and counted in "all other factors"; at least 6 factors with the real input list |
 | `tests/unit/test_service.py` | `ForecastService.forecast` with fake inputs: normal forecast (current + change), stale / missing / NaN current value, city unknown to the model, missing history reported, negative forecast clipped, model server down raises the error the API turns into 503, guidance failure keeps the forecast |
-| `tests/unit/test_guidance.py` | all 6 categories × 3 groups parsed with sources; malformed file rejected; search returns the right category and group (local Qdrant in a temporary folder, deterministic test embedder) |
+| `tests/unit/test_guidance.py` | all 6 categories × 3 groups parsed with sources; malformed file rejected; search returns the right category and group for all 18 pairs, even with an embedder that cannot tell the texts apart (local Qdrant in a temporary folder, deterministic test embedders) |
 | `tests/unit/test_api.py` | every endpoint and response schema; 404 for an unknown city; 422 for invalid values; `available: false` carries a reason; dependency failures give 503, not 500; "live data store" and "being refreshed" give different messages |
 | `tests/unit/test_settings.py` | `params.yaml` with and without environment overrides; the Redis address replaced while its options are kept (no connection made) |
 | `tests/unit/test_service.py` (weather, robustness) | incomplete weather gives no forecast; a saved forecast is used when the live call fails; MLflow's error text is kept; an empty integer input gives no forecast; a failed online read is retried once, then reported; an unreachable Redis is reported as "store down"; no technical error text in the warnings |

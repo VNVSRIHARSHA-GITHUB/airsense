@@ -2,7 +2,7 @@
 
 AirSense shows the air quality in 14 Indian cities for the next 24 hours, and what to do about it. This manual is for anyone who uses the website; no technical knowledge is needed. The last section is for the people who run the system.
 
-*Draft, October 2026. Screenshots taken from the running system on 24 October 2026.*
+*Version 1.0, November 2026. Screenshots taken from the running system on 5 November 2026; the values on your screen will differ.*
 
 ---
 

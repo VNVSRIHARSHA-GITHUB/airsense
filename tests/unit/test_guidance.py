@@ -40,3 +40,20 @@ def test_search_filters_by_category_and_finds_the_group(tmp_path):
     assert hit["category"] == "Poor"
     assert hit["group"] == "sensitive"
     client.close()
+
+
+def test_every_category_and_group_gets_its_own_text(tmp_path):
+    """All 18 pairs, with an embedder that cannot tell the texts apart: only the
+    group filter can pick the right one (with the group matched by meaning, the
+    real model gave Very Poor + general -> the outdoor workers' text)."""
+
+    def same_vector(texts):
+        return np.ones((len(texts), 8)) / np.sqrt(8)
+
+    client = open_client(tmp_path / "qdrant")
+    entries = load_docs(DOCS)
+    build(client, "guidance", entries, same_vector)
+    for e in entries:
+        hit = search(client, "guidance", same_vector, e["category"], e["group"])[0]
+        assert (hit["category"], hit["group"]) == (e["category"], e["group"])
+    client.close()
