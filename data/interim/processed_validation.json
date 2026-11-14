@@ -1,5 +1,5 @@
 {
-  "validated_at_utc": "2026-11-13T17:35:13.052757+00:00",
+  "validated_at_utc": "2026-11-14T17:35:21.081353+00:00",
   "settings": {
     "coverage_since": "2020-01-01",
     "min_coverage_frac": 0.9,
@@ -9,9 +9,9 @@
   },
   "rows": {
     "history": 1301754,
-    "live": 3424
+    "live": 3466
   },
-  "seconds": 1.6,
+  "seconds": 2.7,
   "critical_passed": true,
   "critical": {
     "schema": [],
@@ -33,6 +33,19 @@
     "live_status": [
       {
         "expectation": "expect_column_values_to_be_between",
+        "column": "age_hours",
+        "unexpected_percent": 100.0,
+        "examples": [
+          "23.08850324138889",
+          "23.08850324138889",
+          "23.08850324138889",
+          "23.08850324138889",
+          "23.08850324138889"
+        ],
+        "observed": null
+      },
+      {
+        "expectation": "expect_column_values_to_be_between",
         "column": "min_stations",
         "unexpected_percent": 7.143,
         "examples": [
@@ -50,7 +63,64 @@
       }
     ],
     "missing_live_cities": [],
-    "stale_live_cities": [],
+    "stale_live_cities": [
+      {
+        "city": "Ahmedabad",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Bengaluru",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Chandigarh",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Chennai",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Delhi",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Guwahati",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Hyderabad",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Jaipur",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Kanpur",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Kolkata",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Lucknow",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Mumbai",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Patna",
+        "age_hours": 23.1
+      },
+      {
+        "city": "Pune",
+        "age_hours": 23.1
+      }
+    ],
     "few_live_stations": [
       {
         "city": "Chandigarh",
