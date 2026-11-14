@@ -13,6 +13,8 @@ and automatic retraining.
 
 DA3408 course project · Sri Harsha (DA24B034) · November 2026
 
+**Demo video:** [AirSense walkthrough (Google Drive)](https://drive.google.com/drive/folders/1X3caV8P0pMcd_6ZZU9Cbu1BB-CseggN8?usp=sharing)
+
 ![Forecast page](docs/images/manual_forecast_desktop.png)
 
 ---
