@@ -11,9 +11,9 @@ versioned data, validated pipelines, tracked experiments, a quality gate and a m
 registry, containers, scheduled workflows, monitoring with alerts, drift detection
 and automatic retraining.
 
-DA3408 course project · Sri Harsha (DA24B034) · November 2026
+DA3408 course project · Sri Harsha (DA24B034) · 
 
-**Demo video:** [AirSense walkthrough (Google Drive)](https://drive.google.com/drive/folders/1X3caV8P0pMcd_6ZZU9Cbu1BB-CseggN8?usp=sharing)
+**video:** [AirSense walkthrough (Google Drive)](https://drive.google.com/drive/folders/1X3caV8P0pMcd_6ZZU9Cbu1BB-CseggN8?usp=sharing)
 
 ![Forecast page](docs/images/manual_forecast_desktop.png)
 
